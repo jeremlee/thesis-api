@@ -13,6 +13,7 @@ genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 transcription_model = whisper.load_model("base")
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"
+sentiment_prompt = "dont give me anything but a string giving me sentimental analysis and personality traits based on this interview transcript (detailed with at least 100 words). Detailed breakdown of personality traits such as openness, conscientiousness, extroversion, etc.\nTranscript: "
 scoring_prompt = "score the candidate from 1-10 based on the resume and transcript, dont give me anything but a json with two fields: raw score, and reason"
 app = FastAPI()
 
@@ -24,18 +25,19 @@ class ScoreInput(BaseModel):
 def home():
     return {"message": "Hello"}
 
-@app.get("/transcribe")
+@app.post("/transcribe")
 def transcribe(file_path: str):
     try:
         full_path = os.path.join("interviews", file_path) #adjust for database later
         if not os.path.exists(full_path):
             return {"error": "File not found."}
         result = transcription_model.transcribe(full_path)
-        return {"transcription": result["text"]}
+        sentiment_analysis = gemini_model.generate_content(sentiment_prompt + result["text"])
+        return {"transcription": result["text"], "sentiment_analysis": sentiment_analysis.text.strip()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/parseresume")
+@app.post("/parseresume")
 def parse_resume(file_path: str):
     try:
         full_path = os.path.join("resumes", file_path) #adjust for database later
