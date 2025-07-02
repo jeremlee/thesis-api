@@ -1,0 +1,22 @@
+from fastapi import FastAPI, HTTPException
+
+from app.routers import parseresume, transcribe, score
+
+app = FastAPI()
+app.include_router(transcribe.router)
+app.include_router(parseresume.router)
+app.include_router(score.router)
+
+
+@app.get("/")
+def read_root() -> dict[str, str]:
+    return {"message": "Welcome to the Resume and Interview Analysis API!"}
+
+
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    try:
+        response = {"status": "ok", "message": "API is running smoothly."}
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

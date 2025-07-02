@@ -2,12 +2,11 @@
 __pycache__/
 *.py[cod]
 
-
 myenv/
-
 
 .python-version
 .env*
+.venv
 interviews/
 resumes/
 
@@ -31,3 +30,5 @@ build/
 
 
 Thumbs.db
+
+*.code-workspace
