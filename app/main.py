@@ -1,8 +1,18 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
 from app.routers import parseresume, transcribe, score
 
-app = FastAPI()
+from app.executor import _executor
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    _executor.shutdown(wait=True)
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(transcribe.router)
 app.include_router(parseresume.router)
 app.include_router(score.router)
