@@ -8,7 +8,7 @@ from app.dependencies import ScoreInput, scoring_prompt, gemini_model
 router = APIRouter(prefix="/score", tags=["Score"])
 
 
-@router.post("/score")
+@router.post("/")
 def score_candidate(data: ScoreInput) -> Any:
     try:
         prompt = (
@@ -17,6 +17,15 @@ def score_candidate(data: ScoreInput) -> Any:
             + data.resume
             + "\nTranscript: "
             + data.transcript
+            + "\n--- Candidate Analysis ---" 
+            + "\nSentimental Analysis: "
+            + data.extra_analysis.sentimental_analysis 
+            + "\nPersonality Traits: "
+            + data.extra_analysis.personality_traits 
+            + "\nCommunication Style Insights: "
+            + data.extra_analysis.communication_style_insights 
+            + "\nInterview Insights: "
+            + data.extra_analysis.interview_insights 
         )
         response = gemini_model.generate_content(prompt)
         raw_output = response.text.strip()
