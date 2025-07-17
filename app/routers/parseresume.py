@@ -3,12 +3,11 @@ from typing import Any
 import json
 import re
 
-from app.dependencies import gemini_model
+from app.dependencies import gemini_model, parsing_prompt
 from app.services.cloudinary_service import fetch_file
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 
-parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"
 
 
 @router.post("/")

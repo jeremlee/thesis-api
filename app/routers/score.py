@@ -3,11 +3,9 @@ from typing import Any
 import json
 import re
 
-from app.dependencies import ScoreInput, gemini_model
+from app.dependencies import ScoreInput, gemini_model, scoring_prompt
 
 router = APIRouter(prefix="/score", tags=["Score"])
-
-scoring_prompt = "score the candidate from 1-10 based on the resume and transcript, dont give me anything but a json with two fields: raw score, and reason"
 
 
 @router.post("/")
@@ -15,6 +13,7 @@ def score_candidate(data: ScoreInput) -> Any:
     try:
         prompt = (
             scoring_prompt
+            + "\n Job: " + data.role
             + "\nResume: "
             + data.resume
             + "\nTranscript: "

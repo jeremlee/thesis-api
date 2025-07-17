@@ -8,8 +8,6 @@ from app.dependencies import gemini_model, transcription_model, extra_transcript
 
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
 
-sentiment_prompt = "dont give me anything but a string giving me sentimental analysis and personality traits based on this interview transcript (detailed with at least 100 words). Detailed breakdown of personality traits such as openness, conscientiousness, extroversion, etc.\nTranscript: "
-
 
 @router.post("/")
 def transcribe(file_path: str) -> Dict[str, Union[str, Any]]:
