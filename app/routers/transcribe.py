@@ -4,7 +4,7 @@ import os
 import json
 import re
 
-from app.dependencies import gemini_model, transcription_model, extra_transcript_prompt
+from app.dependencies import transcript_gemini_model, transcription_model, extra_transcript_prompt
 
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
 
@@ -16,7 +16,7 @@ def transcribe(file_path: str) -> Dict[str, Union[str, Any]]:
         if not os.path.exists(full_path):
             return {"error": "File not found."}
         result = transcription_model.transcribe(full_path)
-        extra_analysis = gemini_model.generate_content(
+        extra_analysis = transcript_gemini_model.generate_content(
             f"{extra_transcript_prompt}{result['text']}"
         )
         gemini_json_string = extra_analysis.text.strip()

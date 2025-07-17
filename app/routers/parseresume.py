@@ -3,12 +3,10 @@ from typing import Any
 import json
 import re
 
-from app.dependencies import gemini_model, parsing_prompt
+from app.dependencies import parsing_gemini_model, parsing_prompt
 from app.services.cloudinary_service import fetch_file
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
-
-
 
 @router.post("/")
 async def parse_resume(public_id: str) -> dict[str, str] | Any:
@@ -17,7 +15,7 @@ async def parse_resume(public_id: str) -> dict[str, str] | Any:
         print(f"Fetched file metadata: {file}")
         text: str = ""
 
-        response = gemini_model.generate_content(parsing_prompt + "\n" + text)
+        response = parsing_gemini_model.generate_content(parsing_prompt + "\n" + text)
         raw_output: str = response.text.strip()
 
         if raw_output.startswith("```json"):
