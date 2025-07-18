@@ -8,7 +8,6 @@ from app.response_schemas.score_format import scoring_response_schema
 import whisper
 import os
 from whisper.model import Whisper
-from typing import Dict, Any
 
 load_dotenv(".env.local")
 configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -17,22 +16,22 @@ parsing_gemini_model = GenerativeModel(
     model_name="gemini-2.0-flash",
     generation_config={
         "response_mime_type": "application/json",
-        "response_schema": resume_response_schema
-    }
+        "response_schema": resume_response_schema,
+    },
 )
 transcript_gemini_model = GenerativeModel(
     model_name="gemini-2.0-flash",
     generation_config={
         "response_mime_type": "application/json",
-        "response_schema": transcript_response_schema
-    }
+        "response_schema": transcript_response_schema,
+    },
 )
 scoring_gemini_model = GenerativeModel(
     model_name="gemini-2.0-flash",
     generation_config={
         "response_mime_type": "application/json",
-        "response_schema": scoring_response_schema
-    }
+        "response_schema": scoring_response_schema,
+    },
 )
 transcription_model: Whisper = whisper.load_model("base")
 
@@ -46,11 +45,11 @@ extra_transcript_prompt = (
     "Put them in their appropriate fields as mentioned above."
     "\nTranscript: "
 )  # used in transcribe.py
-scoring_prompt = "output only a json with 3 fields: raw_score (from 1-5), reason (at least 100 words), and predictive_success (1-100). The raw_score field is the candidate's score based on how fit for the role he is and based on" \
-                    " the resume, the transcript, and the other extra analyses. The reason is the reason justifying the raw_score." \
-                    " Meanwhile, the predictive_success field is the number between 1-100 which tells us how successful the candidate might be."
-
-
+scoring_prompt = (
+    "output only a json with 3 fields: raw_score (from 1-5), reason (at least 100 words), and predictive_success (1-100). The raw_score field is the candidate's score based on how fit for the role he is and based on"
+    " the resume, the transcript, and the other extra analyses. The reason is the reason justifying the raw_score."
+    " Meanwhile, the predictive_success field is the number between 1-100 which tells us how successful the candidate might be."
+)
 
 
 class ExtraAnalysisData(BaseModel):  # result from transcribe API
@@ -63,5 +62,5 @@ class ExtraAnalysisData(BaseModel):  # result from transcribe API
 class ScoreInput(BaseModel):
     resume: str
     transcript: str
-    role : str
+    role: str
     extra_analysis: ExtraAnalysisData

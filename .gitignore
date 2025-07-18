@@ -32,3 +32,4 @@ build/
 Thumbs.db
 
 *.code-workspace
+env.local
