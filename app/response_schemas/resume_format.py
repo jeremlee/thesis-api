@@ -1,22 +1,19 @@
 resume_response_schema = {
     "type": "object",
     "properties": {
-        "name": {
-            "type": "string",
-            "description": "The full name of the candidate."
-        },
+        "name": {"type": "string", "description": "The full name of the candidate."},
         "city": {
             "type": "string",
-            "description": "The current city of residence of the candidate. Put N/A if null"
+            "description": "The current city of residence of the candidate. Put N/A if null",
         },
         "contact_number": {
             "type": "string",
-            "description": "The contact phone number of the candidate."
+            "description": "The contact phone number of the candidate.",
         },
         "email": {
             "type": "string",
-            "format": "email", 
-            "description": "The email address of the candidate."
+            # Removed format: "email" - not supported by Gemini
+            "description": "The email address of the candidate.",
         },
         "educational_background": {
             "type": "array",
@@ -26,39 +23,35 @@ resume_response_schema = {
                 "properties": {
                     "degree": {
                         "type": "string",
-                        "description": "The degree obtained (e.g., Bachelor of Science, Master of Arts)."
+                        "description": "The degree obtained (e.g., Bachelor of Science, Master of Arts).",
                     },
                     "start_date": {
                         "type": "string",
-                        "format": "date", # 
-                        "description": "The start date of the education (e.g., 'YYYY-MM', 'YYYY')."
+                        "format": "date-time",
+                        "description": "The start date of the education (e.g., 'YYYY-MM', 'YYYY').",
                     },
                     "end_date": {
                         "type": "string",
-                        "format": "date", 
-                        "description": "The end date of the education, or 'Present' if ongoing."
+                        "format": "date-time",
+                        "description": "The end date of the education, or 'Present' if ongoing.",
                     },
                     "institution": {
                         "type": "string",
-                        "description": "The name of the educational institution."
-                    }
+                        "description": "The name of the educational institution.",
+                    },
                 },
-                "required": ["degree", "institution"] 
-            }
+                "required": ["degree", "institution"],
+            },
         },
         "soft_skills": {
             "type": "array",
             "description": "A list of the candidate's soft skills (e.g., communication, teamwork, leadership).",
-            "items": {
-                "type": "string"
-            }
+            "items": {"type": "string"},
         },
         "hard_skills": {
             "type": "array",
             "description": "A list of the candidate's technical or hard skills (e.g., Python, SQL, Project Management).",
-            "items": {
-                "type": "string"
-            }
+            "items": {"type": "string"},
         },
         "work_experience": {
             "type": "array",
@@ -68,29 +61,29 @@ resume_response_schema = {
                 "properties": {
                     "title": {
                         "type": "string",
-                        "description": "The job title held (e.g., Software Engineer, Project Manager)."
+                        "description": "The job title held (e.g., Software Engineer, Project Manager).",
                     },
                     "company": {
                         "type": "string",
-                        "description": "The name of the company."
+                        "description": "The name of the company.",
                     },
                     "start_date": {
                         "type": "string",
-                        "format": "date",
-                        "description": "The start date of the work experience (e.g., 'YYYY-MM', 'YYYY')."
+                        "format": "date-time",
+                        "description": "The start date of the work experience (e.g., 'YYYY-MM', 'YYYY').",
                     },
                     "end_date": {
                         "type": "string",
-                        "format": "date",
-                        "description": "The end date of the work experience, or 'Present' if current."
+                        "format": "date-time",
+                        "description": "The end date of the work experience, or 'Present' if current.",
                     },
                     "description": {
                         "type": "string",
-                        "description": "A brief description of responsibilities and achievements in this role."
-                    }
+                        "description": "A brief description of responsibilities and achievements in this role.",
+                    },
                 },
-                "required": ["title", "company", "start_date"]
-            }
+                "required": ["title", "company", "start_date"],
+            },
         },
         "projects": {
             "type": "array",
@@ -100,28 +93,28 @@ resume_response_schema = {
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "The name of the project."
+                        "description": "The name of the project.",
                     },
                     "start_date": {
                         "type": "string",
-                        "format": "date",
-                        "description": "The start date of the project (e.g., 'YYYY-MM', 'YYYY')."
+                        "format": "date-time",
+                        "description": "The start date of the project (e.g., 'YYYY-MM', 'YYYY').",
                     },
                     "end_date": {
                         "type": "string",
-                        "format": "date",
-                        "description": "The end date of the project, or 'Present' if ongoing."
+                        "format": "date-time",
+                        "description": "The end date of the project, or 'Present' if ongoing.",
                     },
                     "description": {
                         "type": "string",
-                        "description": "A description of the project, including its purpose and your contributions."
-                    }
+                        "description": "A description of the project, including its purpose and your contributions.",
+                    },
                 },
-                "required": ["name", "description"] 
-            }
-        }
+                "required": ["name", "description"],
+            },
+        },
     },
-    "required": [ 
+    "required": [
         "name",
         "city",
         "contact_number",
@@ -130,6 +123,6 @@ resume_response_schema = {
         "soft_skills",
         "hard_skills",
         "work_experience",
-        "projects"
-    ]
+        "projects",
+    ],
 }

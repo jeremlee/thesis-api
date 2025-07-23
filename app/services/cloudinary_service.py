@@ -15,40 +15,19 @@ cloudinary.config(
 )
 
 
-async def fetch_file(public_id: str):
+async def fetch_file(public_id: str, resource_type: str = "raw"):
     """Fetch file metadata from Cloudinary."""
     try:
         return await asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: cloudinary.api.resource(public_id),
+            lambda: cloudinary.api.resource(public_id, resource_type=resource_type),
         )
     except Exception as e:
         print(f"Failed with default: {str(e)}")
 
-        try:
-            print("Trying resource_type='raw'...")
-            return await asyncio.get_running_loop().run_in_executor(
-                _executor,
-                lambda: cloudinary.api.resource(public_id, resource_type="raw"),
-            )
-        except Exception as e2:
-            print(f"Failed with raw: {str(e2)}")
-
-            try:
-                print("Trying resource_type='video'...")
-                return await asyncio.get_running_loop().run_in_executor(
-                    _executor,
-                    lambda: cloudinary.api.resource(public_id, resource_type="video"),
-                )
-            except Exception as e3:
-                print(f"Failed with video: {str(e3)}")
-                raise Exception(
-                    f"Error fetching file with all resource types: {str(e)}"
-                )
-
 
 def generate_signed_url(public_id: str, resource_type: str = "raw") -> str:
     url, _ = cloudinary.utils.cloudinary_url(
-        public_id, resource_type=resource_type, sign_url=True, type="upload"
+        public_id, resource_type=resource_type, sign_url=False, type="upload"
     )
     return url
