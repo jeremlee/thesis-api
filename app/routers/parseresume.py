@@ -10,6 +10,7 @@ import io
 from app.dependencies import parsing_gemini_model, parsing_prompt
 from app.services.cloudinary_service import fetch_file, generate_signed_url
 from app.executor import _executor
+from app.services.mongodb_service import mongdb_service
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 
@@ -45,7 +46,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
     try:
         file = await fetch_file(public_id)
 
-        resource_type = file.get("resource_type", "raw")
+        resource_type = file.get("resource_type", "raw")  # type: ignore
         pdf_url = generate_signed_url(public_id, resource_type)
 
         if not pdf_url:
@@ -63,14 +64,17 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
         if raw_output.startswith("```json"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
-        parsed_result = json.loads(raw_output)
-        return parsed_result
-
-    except HTTPException:
-        raise
-    except json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=500, detail=f"Model output was not valid JSON: {str(e)}"
-        )
+        return {
+            "inserted_id": str(
+                await mongdb_service.insert_document(
+                    "parsed_resume",
+                    {
+                        "applicant_id": applicant_id,
+                        "public_id": public_id,
+                        "raw_output": raw_output,
+                    },
+                )
+            ),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

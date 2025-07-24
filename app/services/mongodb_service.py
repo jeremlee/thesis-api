@@ -1,44 +1,51 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
-from pymongo.errors import ConnectionFailure
-from typing import Optional
-import logging
-from app.config import get_settings
+from pymongo import MongoClient
+import asyncio
 
-logger = logging.getLogger(__name__)
+from app.config import get_settings
+from app.executor import _executor
 
 
 class MongoDBService:
-    def __init__(self):
-        self.client: Optional[AsyncIOMotorClient] = None
-        self.database = None
-        self.settings = get_settings()
+    def __init__(self, uri: str, db_name: str):
+        self.client = MongoClient(uri)
+        self.db = self.client[db_name]
 
-    async def connect(self):
-        """Connect to MongoDB"""
-        try:
-            self.client = AsyncIOMotorClient(self.settings.mongodb_uri)
-            self.database = self.client["ai-driven-recruitment"]
-            logger.info("Successfully connected to MongoDB")
-        except ConnectionFailure as e:
-            logger.error(f"Failed to connect to MongoDB: {e}")
-            raise
+    async def insert_document(self, collection_name: str, document: dict):
+        return await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: self.db[collection_name].insert_one(document).inserted_id,
+        )
 
-    async def disconnect(self):
-        """Disconnect from MongoDB"""
-        if self.client:
-            self.client.close()
-            logger.info("Disconnected from MongoDB")
+    async def find_document(self, collection_name: str, query: dict):
+        return await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: self.db[collection_name].find_one(query),
+        )
 
-    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection:
-        """Get a collection from the database"""
-        if self.database is None:
-            raise RuntimeError("Database not connected")
-        return self.database[collection_name]
+    async def update_document(
+        self, collection_name: str, query: dict, update: dict
+    ) -> int:
+        return await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: self.db[collection_name]
+            .update_one(query, {"$set": update})
+            .modified_count,
+        )
+
+    async def delete_document(self, collection_name: str, query: dict) -> int:
+        return await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: self.db[collection_name].delete_one(query).deleted_count,
+        )
+
+    async def insert_many_documents(self, collection_name: str, documents: list):
+        return await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: self.db[collection_name].insert_many(documents).inserted_ids,
+        )
 
 
-_mongodb_service = MongoDBService()
-
-
-async def get_mongodb() -> MongoDBService:
-    """Dependency to get MongoDB service"""
-    return _mongodb_service
+settings = get_settings()
+mongdb_service = MongoDBService(
+    uri=settings.mongodb_uri, db_name=settings.database_name
+)

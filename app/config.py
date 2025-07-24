@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     """ MongoDB configuration settings. """
     mongodb_uri: str = ""
+    database_name: str = ""
 
     debug: bool = False
 

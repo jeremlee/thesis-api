@@ -12,7 +12,6 @@ resume_response_schema = {
         },
         "email": {
             "type": "string",
-            # Removed format: "email" - not supported by Gemini
             "description": "The email address of the candidate.",
         },
         "educational_background": {
