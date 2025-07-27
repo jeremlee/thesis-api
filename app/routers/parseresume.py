@@ -10,7 +10,7 @@ import io
 from app.dependencies import parsing_gemini_model, parsing_prompt
 from app.services.cloudinary_service import fetch_file, generate_signed_url
 from app.executor import _executor
-from app.services.mongodb_service import mongdb_service
+from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
@@ -65,9 +65,15 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
         if raw_output.startswith("```json"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
-        inserted_id = await mongdb_service.insert_document(
+        await mongodb.delete_document(
+            "parsed_resume",
+            {"applicant_id": applicant_id},
+        )
+
+        inserted_id = await mongodb.insert_document(
             "parsed_resume",
             {
+                "user_id": applicant_id,
                 "raw_output": json.loads(raw_output),
             },
         )
@@ -87,7 +93,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
         )
 
         if not result.data:
-            await mongdb_service.delete_document("parsed_resume", {"_id": inserted_id})
+            await mongodb.delete_document("parsed_resume", {"_id": inserted_id})
             raise HTTPException(status_code=404, detail="User not found")
 
         return {

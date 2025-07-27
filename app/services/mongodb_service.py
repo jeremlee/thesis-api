@@ -46,6 +46,6 @@ class MongoDBService:
 
 
 settings = get_settings()
-mongdb_service = MongoDBService(
+mongodb = MongoDBService(
     uri=settings.mongodb_uri, db_name=settings.database_name
 )
