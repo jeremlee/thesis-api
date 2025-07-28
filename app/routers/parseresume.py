@@ -55,7 +55,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
 
         text: str = await extract_text_from_pdf(pdf_url)
 
-        raw_output = await asyncio.get_event_loop().run_in_executor(
+        raw_output = await asyncio.get_running_loop().run_in_executor(
             _executor,
             lambda: parsing_gemini_model.generate_content(
                 parsing_prompt + "\n" + text
@@ -83,7 +83,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
                 status_code=500, detail="Failed to insert parsed resume"
             )
 
-        result = await asyncio.get_event_loop().run_in_executor(
+        result = await asyncio.get_running_loop().run_in_executor(
             _executor,
             lambda: get_supabase_admin_client()
             .table("users")

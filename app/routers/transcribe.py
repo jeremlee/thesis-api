@@ -64,7 +64,7 @@ async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, 
                 status_code=500, detail="Failed to insert transcription"
             )
 
-        result = await asyncio.get_event_loop().run_in_executor(
+        result = await asyncio.get_running_loop().run_in_executor(
             _executor,
             lambda: get_supabase_admin_client()
             .table("users")

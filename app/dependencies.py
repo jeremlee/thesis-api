@@ -57,10 +57,3 @@ class ExtraAnalysisData(BaseModel):  # result from transcribe API
     personality_traits: str
     communication_style_insights: str
     interview_insights: str
-
-
-class ScoreInput(BaseModel):
-    resume: str
-    transcript: str
-    role: str
-    extra_analysis: ExtraAnalysisData
