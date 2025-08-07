@@ -29,7 +29,7 @@ def convert_objectid(obj):
 
 
 @router.post("/")
-async def score_candidate(user_id: str, job_id: str) -> Any:
+async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
     try:
         job_listing_data, transcribed, parsed_resume = await asyncio.gather(
             asyncio.get_running_loop().run_in_executor(
@@ -108,13 +108,12 @@ async def score_candidate(user_id: str, job_id: str) -> Any:
             )
         )
 
-        response = scoring_gemini_model.generate_content(prompt)
-        raw_output = response.text.strip()
+        raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
 
         if raw_output.startswith("```json"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
-        inserted = await mongodb.insert_document(
+        inserted_id = await mongodb.insert_document(
             "scored_candidates",
             {
                 "user_id": user_id,
@@ -123,8 +122,23 @@ async def score_candidate(user_id: str, job_id: str) -> Any:
             },
         )
 
-        if not inserted:
+        if not inserted_id:
             raise HTTPException(status_code=500, detail="Failed to insert score data")
+
+        result = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: get_supabase_admin_client()
+            .table("job_applicants")
+            .update({"score_id": str(inserted_id)})
+            .eq("id", applicant_id)
+            .execute(),
+        )
+
+        if not result.data:
+            await mongodb.delete_document("scored_candidates", {"_id": inserted_id})
+            raise HTTPException(
+                status_code=500, detail="Failed to update job applicant"
+            )
 
         return {
             "message": "Candidate scored successfully",

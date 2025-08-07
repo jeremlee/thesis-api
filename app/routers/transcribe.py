@@ -74,6 +74,7 @@ async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, 
         )
 
         if not result.data:
+            await mongodb.delete_document("transcribed", {"_id": inserted_id})
             raise HTTPException(
                 status_code=500, detail="Failed to update user with transcription ID"
             )
