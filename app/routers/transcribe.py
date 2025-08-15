@@ -85,3 +85,20 @@ async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, 
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/")
+async def delete_transcription(applicant_id: str):
+    await asyncio.gather(
+        mongodb.delete_document("transcribed", {"user_id": applicant_id}),
+        asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: get_supabase_admin_client()
+            .table("users")
+            .update({"transcribed_id": None})
+            .eq("id", applicant_id)
+            .execute(),
+        ),
+    )
+
+    return {"message": "Transcription deleted successfully"}

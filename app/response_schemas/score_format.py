@@ -16,7 +16,7 @@ scoring_response_schema = {
         "phrases": {
             "type": "array",
             "description": "An array of key phrases extracted from the reason which give the user an easy-to-read summary by providing phrases about the user, each phrase must be no more than 5 words.",
-            "phrase": {
+            "items": {
                 "type": "string"
             }
         }
