@@ -16,12 +16,17 @@ transcript_response_schema = {
         "interview_insights": {
             "type": "string",
             "description": "Key insights extracted from the interview, summarizing overall sentiment, the dominant communication style observed, and notable soft skills demonstrated. This field should provide a concise summary of the most important takeaways from the transcript. Must be at least 100 words."
+        },
+        "cultural_fit_insights": {
+            "type": "string",
+            "description": "Key insights extracted from the interview, summarizing and comparing the candidate's values to the company's core values which are: quality,agility, integrity, exceeding customer expectations through innovation, and efficiency."
         }
     },
     "required": [
         "sentimental_analysis",
         "personality_traits",
         "communication_style_insights",
-        "interview_insights"
+        "interview_insights",
+        "cultural_fit_insights"
     ]
 }

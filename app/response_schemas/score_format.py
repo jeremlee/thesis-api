@@ -12,11 +12,20 @@ scoring_response_schema = {
         "predictive_success": {
             "type": "integer",
             "description": "A percentage (1-100) representing how successful the candidate might be in the role."
+        },
+        "phrases": {
+            "type": "array",
+            "description": "An array of key phrases extracted from the reason which give the user an easy-to-read summary by providing phrases about the user, each phrase must be no more than 5 words.",
+            "phrase": {
+                "type": "string"
+            }
         }
+
     },
     "required": [
         "raw_score",
         "reason",
-        "predictive_success"
+        "predictive_success",
+        "phrases"
     ]
 }
