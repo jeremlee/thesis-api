@@ -26,7 +26,6 @@ def read_root() -> dict[str, str]:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     try:
-        response = {"status": "ok", "message": "API is running smoothly."}
-        return response
+        return {"status": "ok", "message": "API is running smoothly."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

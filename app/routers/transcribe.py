@@ -41,7 +41,7 @@ async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, 
             gemini_json_string = re.sub(r"```json|```", "", gemini_json_string).strip()
         try:
             extra_analysis_data = json.loads(gemini_json_string)
-        except json.JSONDecodeError as json_e:
+        except json.JSONDecodeError:
             raise HTTPException(
                 status_code=500, detail="Failed to parse analysis from AI model."
             )
