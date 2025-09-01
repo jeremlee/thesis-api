@@ -19,6 +19,10 @@ scoring_response_schema = {
             "items": {
                 "type": "string"
             }
+        },
+        "skill_gaps_recommendations": {
+            "type": "string",
+            "description": "Highlight any skill gaps in the candidate, along with recommendations for training or development. (at most 50 words only)"
         }
 
     },
@@ -26,6 +30,7 @@ scoring_response_schema = {
         "raw_score",
         "reason",
         "predictive_success",
-        "phrases"
+        "phrases",
+        "skill_gaps_recommendations"
     ]
 }

@@ -49,11 +49,12 @@ extra_transcript_prompt = (
     "\nTranscript: "
 )  # used in transcribe.py
 scoring_prompt = (
-    "output only a json with 5 fields: raw_score (from 1-5), reason (at least 100 words), phrases (each no more than 5 words), summary (no more than 20 words), and predictive_success (1-100). The raw_score field is the candidate's score based on how fit for the role he is and based on"
+    "output only a json with 6 fields: raw_score (from 1-5), reason (at least 100 words), phrases (each no more than 5 words), summary (no more than 20 words), predictive_success (1-100), and skill_gaps_recommendations. The raw_score field is the candidate's score based on how fit for the role he is and based on"
     " the resume, the transcript, and the other extra analyses. The reason is the reason justifying the raw_score."
     " The summary is the summary of the reason which must not exceed 20 words."
     " The phrases is a field with its own field named 'phrase' (no more than 5 words), which serve as easy-to-read summaries of the reason why the candidate's score is like this."
     " Meanwhile, the predictive_success field is the number between 1-100 which tells us how successful the candidate might be."
+    "Furthermore, in the skill_gaps_recommendations part, highlight any skill gaps in the candidate, along with recommendations for training or development. (at most 50 words only)"
 )
 
 
