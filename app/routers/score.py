@@ -4,25 +4,26 @@ from typing import Any
 import json
 import re
 from typing import List
+
+from scipy.sparse import csr_matrix
 from app.dependencies import scoring_gemini_model, scoring_prompt
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
 
-#Scoring without Gemini
-def cosine_similarity_scoring(resume_skills: List[str] , job_skills: List[str]):
-    corpus = [' '.join(resume_skills), ' '.join(job_skills)]
+# Scoring without Gemini
+def cosine_similarity_scoring(resume_skills: List[str], job_skills: List[str]):
+    corpus: list[str] = [" ".join(resume_skills), " ".join(job_skills)]
     vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(corpus)
+    tfidf_matrix: csr_matrix = vectorizer.fit_transform(corpus) # type: ignore
     original_score = sk_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
     scaled_score = 1 + 4 * original_score
     return scaled_score
-
 
 
 # Convert ObjectId to string for JSON serialization from MongoDB

@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
-from app.routers import parseresume, transcribe, score
+from app.routers import parseresume, transcribe, score, test
 
 from app.executor import _executor
 
@@ -16,6 +16,7 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(transcribe.router)
 app.include_router(parseresume.router)
 app.include_router(score.router)
+app.include_router(test.router)
 
 
 @app.get("/")
