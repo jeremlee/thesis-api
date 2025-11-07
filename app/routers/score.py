@@ -1,17 +1,17 @@
 import asyncio
-from fastapi import APIRouter, HTTPException
-from typing import Any
 import json
 import re
+from fastapi import APIRouter, HTTPException
+from typing import Any
 from typing import List
-
 from scipy.sparse import csr_matrix
+from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 from app.dependencies import scoring_gemini_model, scoring_prompt
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
-from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
@@ -43,12 +43,12 @@ def convert_objectid(obj):
 
 @router.post("/")
 async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
+    supabase_client = get_supabase_admin_client()
     try:
         job_listing_data, transcribed, parsed_resume = await asyncio.gather(
             asyncio.get_running_loop().run_in_executor(
                 _executor,
-                lambda: get_supabase_admin_client()
-                .table("job_listings")
+                lambda: supabase_client.table("job_listings")
                 .select("title")
                 .eq("id", job_id)
                 .single()
@@ -160,6 +160,13 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
         )
 
         if not inserted_id:
+            await asyncio.get_running_loop().run_in_executor(
+                _executor,
+                lambda: supabase_client.table("job_applicants")
+                .delete()
+                .eq("id", applicant_id)
+                .execute(),
+            )
             raise HTTPException(status_code=500, detail="Failed to insert score data")
 
         result = await asyncio.get_running_loop().run_in_executor(
@@ -181,7 +188,14 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             "message": "Candidate scored successfully",
             "score_data": convert_objectid(raw_output),
         }
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Model output was not valid JSON.")
     except Exception as e:
+        await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: supabase_client.table("job_applicants")
+            .delete()
+            .eq("id", applicant_id)
+            .execute(),
+        )
+
+        # surface a clear HTTP error
         raise HTTPException(status_code=500, detail=str(e))
