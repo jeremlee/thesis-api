@@ -7,8 +7,10 @@ from typing import List
 from scipy.sparse import csr_matrix
 from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
+from transformers import pipeline
+import torch
 
-from app.dependencies import scoring_gemini_model, scoring_prompt
+from app.dependencies import scoring_gemini_model, scoring_prompt, localized_scoring_prompt, gemma_path
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
@@ -17,6 +19,7 @@ router = APIRouter(prefix="/score", tags=["Score"])
 
 
 # Scoring without Gemini
+#lets use this later nalang, first we try gemma's scoring
 def cosine_similarity_scoring(resume_skills: List[str], job_skills: List[str]):
     corpus: list[str] = [" ".join(resume_skills), " ".join(job_skills)]
     vectorizer = TfidfVectorizer()
@@ -142,6 +145,69 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
                 )
             )
         )
+
+
+        #localized LLM
+
+        new_prompt = localized_scoring_prompt + (
+            + "\n Job: "
+            + str(job_listing_data.data.get("title", "No title found"))
+            + "\nResume: "
+            + str(parsed_resume.get("raw_output", "No resume data found"))
+            + "\nTranscript: "
+            + str(
+                transcribed.get("transcription", {}).get(
+                    "transcription", "No transcription data found"
+                )
+            )
+            + "\n--- Candidate Analysis ---"
+            + "\nSentimental Analysis: "
+            + str(
+                transcribed.get("transcription", {}).get(
+                    "sentimental_analysis", "No sentimental analysis found"
+                )
+            )
+            + "\nPersonality Traits: "
+            + str(
+                transcribed.get("transcription", {}).get(
+                    "personality_traits", "No personality traits found"
+                )
+            )
+            + "\nCommunication Style Insights: "
+            + str(
+                transcribed.get("transcription", {}).get(
+                    "communication_style_insights",
+                    "No communication style insights found",
+                )
+            )
+            + "\nInterview Insights: "
+            + str(
+                transcribed.get("transcription", {}).get(
+                    "interview_insights", "No interview insights found"
+                )
+            )
+        )
+        
+        try:
+            pipe = pipeline(
+                "text-generation",
+                model=gemma_path,   
+                tokenizer=gemma_path, 
+                device=0,                  
+                torch_dtype=torch.float16,
+                max_new_tokens=700
+            )
+        except AssertionError:
+            print("CUDA device not found. Switching to CPU.")
+            pipe = pipeline(
+                "text-generation",
+                model=gemma_path,
+                tokenizer=gemma_path,
+                device=-1,
+                max_new_tokens=700
+            )
+        localized_llm_output = pipe(new_prompt, max_new_tokens=700) #use this
+
 
         raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
         if raw_output.startswith("```json"):

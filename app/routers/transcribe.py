@@ -3,13 +3,15 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Union, Any
 import json
 import re
-
+from transformers import pipeline
+import torch
 from app.dependencies import (
     transcript_gemini_model,
     transcription_model,
     extra_transcript_prompt,
 )
 
+from app.dependencies import localized_transcription_prompt, gemma_path
 from app.services.cloudinary_service import fetch_file
 from app.services.mongodb_service import mongodb
 from app.executor import _executor
@@ -30,8 +32,34 @@ async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, 
 
         if not video_url:
             raise HTTPException(status_code=400, detail="Video URL not found")
-
+        
         result = transcription_model.transcribe(video_url)
+
+
+        #localized LLM
+        try:
+            pipe = pipeline(
+                "text-generation",
+                model=gemma_path,   
+                tokenizer=gemma_path, 
+                device=0,                  
+                torch_dtype=torch.float16,
+                max_new_tokens=700
+            )
+        except AssertionError:
+            print("CUDA device not found. Switching to CPU.")
+            pipe = pipeline(
+                "text-generation",
+                model=gemma_path,
+                tokenizer=gemma_path,
+                device=-1,
+                max_new_tokens=700
+            )
+
+
+        localized_llm_output = pipe(localized_transcription_prompt + result['text'], max_new_tokens=700) #use this output (check format)
+
+
         extra_analysis = transcript_gemini_model.generate_content(
             f"{extra_transcript_prompt}{result['text']}"
         )
