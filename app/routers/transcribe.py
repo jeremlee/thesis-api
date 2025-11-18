@@ -1,16 +1,16 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Union, Any
+from typing import Any, Optional
 import json
 import re
 from transformers import pipeline
 import torch
+
 from app.dependencies import (
     transcript_gemini_model,
     transcription_model,
     extra_transcript_prompt,
 )
-
 from app.dependencies import localized_transcription_prompt, gemma_path
 from app.services.cloudinary_service import fetch_file
 from app.services.mongodb_service import mongodb
@@ -19,63 +19,100 @@ from app.services.supabase_service import get_supabase_admin_client
 
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
 
+GEMMA_PIPE: Any = None
+GEMMA_SEMAPHORE = asyncio.Semaphore()
+
+
+async def get_gemma_pipe():
+    global GEMMA_PIPE
+    if GEMMA_PIPE is not None:
+        return GEMMA_PIPE
+
+    def _initialize_pipe(device):
+        return pipeline(
+            "text-generation",
+            model=gemma_path,
+            tokenizer=gemma_path,
+            device=device,
+            dtype=torch.float16,
+            max_new_tokens=700,
+        )
+
+    try:
+        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
+            _executor, lambda: _initialize_pipe(device=0)
+        )
+    except AssertionError:
+        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
+            _executor, lambda: _initialize_pipe(device=-1)
+        )
+
+    return GEMMA_PIPE
+
 
 @router.post("/")
-async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, Any]]:
+async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
     try:
-
         video_metadata = await fetch_file(public_id, resource_type="video")
-
         if not video_metadata:
             raise HTTPException(status_code=400, detail="File URL not found")
-        video_url = video_metadata.get("secure_url") or video_metadata.get("url")
 
+        video_url = video_metadata.get("secure_url") or video_metadata.get("url")
         if not video_url:
             raise HTTPException(status_code=400, detail="Video URL not found")
-        
+
         result = transcription_model.transcribe(video_url)
 
+        # localized LLM
+        pipe = await get_gemma_pipe()
 
-        #localized LLM
-        try:
-            pipe = pipeline(
-                "text-generation",
-                model=gemma_path,   
-                tokenizer=gemma_path, 
-                device=0,                  
-                torch_dtype=torch.float16,
-                max_new_tokens=700
-            )
-        except AssertionError:
-            print("CUDA device not found. Switching to CPU.")
-            pipe = pipeline(
-                "text-generation",
-                model=gemma_path,
-                tokenizer=gemma_path,
-                device=-1,
-                max_new_tokens=700
+        text_content = result.get("text", "")
+
+        # Ensure transcription text is a single string (join lists if necessary)
+        if isinstance(text_content, list):
+            text_content = " ".join([str(t) for t in text_content])
+
+        async with GEMMA_SEMAPHORE:
+            raw_output = await asyncio.get_running_loop().run_in_executor(
+                _executor,
+                lambda: pipe(
+                    localized_transcription_prompt + text_content,
+                    max_new_tokens=700,
+                    return_full_text=False,
+                ),
             )
 
-
-        localized_llm_output = pipe(localized_transcription_prompt + result['text'], max_new_tokens=700) #use this output (check format)
-
-
-        extra_analysis = transcript_gemini_model.generate_content(
-            f"{extra_transcript_prompt}{result['text']}"
-        )
-        gemini_json_string = extra_analysis.text.strip()
-
-        if gemini_json_string.startswith("```json"):
-            gemini_json_string = re.sub(r"```json|```", "", gemini_json_string).strip()
-        try:
-            extra_analysis_data = json.loads(gemini_json_string)
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=500, detail="Failed to parse analysis from AI model."
+        # normalize pipeline return value (HF text-generation returns list[dict] with "generated_text")
+        if isinstance(raw_output, list):
+            out_text = (
+                raw_output[0].get("generated_text")
+                if isinstance(raw_output[0], dict)
+                else str(raw_output[0])
             )
+        else:
+            out_text = str(raw_output)
 
-        result = {"transcription": result["text"]}
-        result.update(extra_analysis_data)
+        out_text = str(out_text)
+
+        # try to extract JSON from ```json``` fenced block first, fallback to first {...}..{...}
+        json_block_pat = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
+        json_match = json_block_pat.search(out_text)
+
+        if json_match:
+            json_text = json_match.group(1)
+        else:
+            brace_match = re.search(r"(\{.*\})", out_text, re.S)
+            json_text = brace_match.group(1) if brace_match else None
+
+        if json_text:
+            try:
+                localized_llm_output = json.loads(json_text)
+                localized_llm_output.update({"transcription": result.get("text", "")})
+            except json.JSONDecodeError:
+                # If parsing fails, return raw text so you can inspect it
+                localized_llm_output = out_text
+        else:
+            localized_llm_output = out_text
 
         await mongodb.delete_document("transcribed", {"user_id": applicant_id})
 
@@ -83,7 +120,7 @@ async def transcribe(public_id: str, applicant_id: str) -> Dict[str, Union[str, 
             "transcribed",
             {
                 "user_id": applicant_id,
-                "transcription": result,
+                "transcription": localized_llm_output,
             },
         )
 

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/score", tags=["Score"])
 
 
 # Scoring without Gemini
-#lets use this later nalang, first we try gemma's scoring
+# lets use this later nalang, first we try gemma's scoring
 def cosine_similarity_scoring(resume_skills: List[str], job_skills: List[str]):
     corpus: list[str] = [" ".join(resume_skills), " ".join(job_skills)]
     vectorizer = TfidfVectorizer()

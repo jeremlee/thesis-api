@@ -2,12 +2,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
 from app.routers import parseresume, transcribe, score, test
-
 from app.executor import _executor
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        await transcribe.get_gemma_pipe()
+    except Exception as e:
+        raise RuntimeError("Failed to initialize GEMMA pipeline") from e
+
     yield
     _executor.shutdown(wait=True)
 

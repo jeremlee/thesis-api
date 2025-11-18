@@ -34,3 +34,6 @@ Thumbs.db
 *.code-workspace
 env.local
 .vscode/
+
+falcon-3b-instruct/
+gemma-3-1b-it/

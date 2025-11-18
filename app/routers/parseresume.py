@@ -9,7 +9,12 @@ import io
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import torch
 import PyPDF2
-from app.dependencies import parsing_gemini_model, parsing_prompt, localized_parsing_prompt, falcon_path
+from app.dependencies import (
+    parsing_gemini_model,
+    parsing_prompt,
+    localized_parsing_prompt,
+    falcon_path,
+)
 from app.services.cloudinary_service import fetch_file, generate_signed_url
 from app.executor import _executor
 from app.services.mongodb_service import mongodb
@@ -56,26 +61,25 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
             raise HTTPException(status_code=400, detail="File URL not found")
 
         text: str = await extract_text_from_pdf(pdf_url)
-        #localized LLM
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(falcon_path)
-            model = AutoModelForCausalLM.from_pretrained(
-                falcon_path,
-                device_map="auto",
-                torch_dtype=torch.float16
-            )
 
+        # localized LLM
+        tokenizer = AutoTokenizer.from_pretrained(falcon_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            falcon_path, device_map="auto", torch_dtype=torch.float16
+        )
+        try:
             pipe = pipeline(
-                "text-generation",
-                model=model,
-                tokenizer=tokenizer,
-                max_new_tokens=700
+                "text-generation", model=model, tokenizer=tokenizer, max_new_tokens=700
             )
         except AssertionError:
-            print("CUDA device not found. Switching to CPU.")
-            pipe = pipeline("text-generation", model=model, device=-1)
+            return HTTPException(
+                status_code=500,
+                detail="Failed to initialize the language model pipeline",
+            )
 
-        output = pipe(localized_parsing_prompt + text, max_new_tokens=700) # use this output (check format)
+        output = pipe(
+            localized_parsing_prompt + text, max_new_tokens=700
+        ) 
         raw_output = await asyncio.get_running_loop().run_in_executor(
             _executor,
             lambda: parsing_gemini_model.generate_content(
