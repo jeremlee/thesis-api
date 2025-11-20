@@ -6,22 +6,15 @@ import re
 import requests
 import PyPDF2
 import io
-from transformers import AutoTokenizer, AutoModelForCausalLM, Pipeline, pipeline
-import torch
+from transformers import Pipeline
 import PyPDF2
 from json import JSONDecoder, JSONDecodeError
 
-from app.dependencies import (
-    parsing_gemini_model,
-    parsing_prompt,
-    localized_parsing_prompt,
-    falcon_path,
-)
-from app.services.cloudinary_service import fetch_file, generate_signed_url
+from app.dependencies import localized_parsing_prompt, get_gemma_pipe, GEMMA_SEMAPHORE
 from app.executor import _executor
+from app.services.cloudinary_service import fetch_file, generate_signed_url
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
-from app.routers.transcribe import get_gemma_pipe, GEMMA_SEMAPHORE
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 

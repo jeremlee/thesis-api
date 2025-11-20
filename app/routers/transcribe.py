@@ -1,53 +1,23 @@
-from asyncio import Semaphore
 import asyncio
 from fastapi import APIRouter, HTTPException
 from typing import Any
 import json
 import re
-from transformers import pipeline
-import torch
 
 from app.dependencies import (
     localized_transcription_prompt,
-    gemma_path,
     transcription_model,
+    GEMMA_PIPE,
+    GEMMA_SEMAPHORE,
+    get_gemma_pipe,
 )
 from app.services.cloudinary_service import fetch_file
 from app.services.mongodb_service import mongodb
 from app.executor import _executor
 from app.services.supabase_service import get_supabase_admin_client
 
+
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
-
-GEMMA_PIPE: Any = None
-GEMMA_SEMAPHORE: Semaphore = asyncio.Semaphore()
-
-
-async def get_gemma_pipe():
-    global GEMMA_PIPE
-    if GEMMA_PIPE is not None:
-        return GEMMA_PIPE
-
-    def _initialize_pipe(device):
-        return pipeline(
-            "text-generation",
-            model=gemma_path,
-            tokenizer=gemma_path,
-            device=device,
-            dtype=torch.float16,
-            max_new_tokens=700,
-        )
-
-    try:
-        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
-            _executor, lambda: _initialize_pipe(device=0)
-        )
-    except AssertionError:
-        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
-            _executor, lambda: _initialize_pipe(device=-1)
-        )
-
-    return GEMMA_PIPE
 
 
 @router.post("/")
