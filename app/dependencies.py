@@ -2,19 +2,23 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from google.generativeai.client import configure
 from google.generativeai.generative_models import GenerativeModel
+import whisper
+import os
+import json
+from whisper.model import Whisper
+
 from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
-import whisper
-import os
-from whisper.model import Whisper
 
 load_dotenv(".env.local")
 configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"
-falcon_path = "D:\\Documents\\A_College\\falcon-3b-instruct"
-gemma_path = "D:\\Documents\\A_College\\gemma-3-1b-it"
+
+falcon_path = "falcon-3b-instruct"
+gemma_path = "gemma-3-1b-it"
+
 parsing_gemini_model = GenerativeModel(
     model_name="gemini-2.0-flash",
     generation_config={
@@ -38,19 +42,22 @@ scoring_gemini_model = GenerativeModel(
 )
 transcription_model: Whisper = whisper.load_model("base")
 
-
-localized_parsing_prompt = """
-
+localized_parsing_prompt = (
+    """
 You are an expert resume parser. Your task is to extract all the key information from the resume provided below and format it into a single JSON object.
 
 You must follow these rules strictly:
 1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
 2. **Do not add any additional fields or information not specified in the schema.**
 3. **If a field's information is not present in the resume, use `null` for that field's value.**
-4. **Adhere strictly to the JSON schema provided below.**""" + "\n###JSON schema:\n" + resume_response_schema + "\n###Resume Text to Parse: \n"
+4. **Adhere strictly to the JSON schema provided below.**"""
+    + "\n###JSON schema:\n"
+    + json.dumps(resume_response_schema, ensure_ascii=False)
+    + "\n###Resume Text to Parse: \n"
+)
 
-localized_transcription_prompt = """
-
+localized_transcription_prompt = (
+    """
 You are an expert HR analyst and behavioral psychologist. Your task is to analyze the given text (such as a resume, personal statement, or writing sample) and extract deeper insights in JSON format.
 
 You must follow these rules strictly:
@@ -59,10 +66,14 @@ You must follow these rules strictly:
 3. **If a field’s information cannot be inferred confidently, use `null`.**
 4. **Keep responses concise but insightful.**
 5. **Focus on the tone, phrasing, and implied characteristics of the text.**
-""" + "\n###JSON schema:\n" + transcript_response_schema + "\n###Text to Analyze: \n"
+"""
+    + "\n###JSON schema:\n"
+    + json.dumps(transcript_response_schema, ensure_ascii=False)
+    + "\n###Text to Analyze: \n"
+)
 
-localized_scoring_prompt = """
-
+localized_scoring_prompt = (
+    """
 You are an expert HR evaluator. Your task is to assess the candidate based on their resume and transcript results and provide a detailed evaluation in a single JSON object.
 
 You must follow these rules strictly:
@@ -77,7 +88,11 @@ You must follow these rules strictly:
    - `skill_gaps_recommendations` must be at most 50 words
 5. **Adhere strictly to the JSON schema provided below.**
 
-""" + "\n###JSON schema:\n" + scoring_response_schema + "\n###Text to Analyze: \n"
+"""
+    + "\n###JSON schema:\n"
+    + json.dumps(scoring_response_schema, ensure_ascii=False)
+    + "\n###Text to Analyze: \n"
+)
 
 
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"
@@ -87,7 +102,9 @@ extra_transcript_prompt = (
     "Detailed breakdown of personality traits such as openness, conscientiousness, extroversion, etc. Furthermore,"
     "giving me the break down of the communication styles (e.g., assertive, passive, empathetic) based on the interview transcript(at least 100 words)"
     "Furthermore, extract and display key insights from the interview, including sentiment, communication style, and soft skills.(100 words)."
-    "Furthermore, also give cultural fit insights (no more than 25 words) comparing the candidate's values to these values: " + core_values + " "
+    "Furthermore, also give cultural fit insights (no more than 25 words) comparing the candidate's values to these values: "
+    + core_values
+    + " "
     "Put them in their appropriate fields as mentioned above."
     "\nTranscript: "
 )  # used in transcribe.py
