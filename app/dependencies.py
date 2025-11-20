@@ -7,12 +7,13 @@ import os
 import json
 from whisper.model import Whisper
 
+from app.config import get_settings
 from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
 
 load_dotenv(".env.local")
-configure(api_key=os.getenv("GEMINI_API_KEY"))
+configure(api_key=get_settings().gemini_api_key)
 
 core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"
 

@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
 app.include_router(transcribe.router)
 app.include_router(parseresume.router)
 app.include_router(score.router)

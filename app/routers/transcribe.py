@@ -1,17 +1,17 @@
+from asyncio import Semaphore
 import asyncio
 from fastapi import APIRouter, HTTPException
-from typing import Any, Optional
+from typing import Any
 import json
 import re
 from transformers import pipeline
 import torch
 
 from app.dependencies import (
-    transcript_gemini_model,
+    localized_transcription_prompt,
+    gemma_path,
     transcription_model,
-    extra_transcript_prompt,
 )
-from app.dependencies import localized_transcription_prompt, gemma_path
 from app.services.cloudinary_service import fetch_file
 from app.services.mongodb_service import mongodb
 from app.executor import _executor
@@ -20,7 +20,7 @@ from app.services.supabase_service import get_supabase_admin_client
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
 
 GEMMA_PIPE: Any = None
-GEMMA_SEMAPHORE = asyncio.Semaphore()
+GEMMA_SEMAPHORE: Semaphore = asyncio.Semaphore()
 
 
 async def get_gemma_pipe():
@@ -109,10 +109,14 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
                 localized_llm_output = json.loads(json_text)
                 localized_llm_output.update({"transcription": result.get("text", "")})
             except json.JSONDecodeError:
-                # If parsing fails, return raw text so you can inspect it
-                localized_llm_output = out_text
+                # If parsing fails, raise an error
+                raise HTTPException(
+                    status_code=500, detail="Failed to parse transcription JSON"
+                )
         else:
-            localized_llm_output = out_text
+            raise HTTPException(
+                status_code=500, detail="Failed to parse transcription JSON"
+            )
 
         await mongodb.delete_document("transcribed", {"user_id": applicant_id})
 
