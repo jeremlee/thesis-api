@@ -1,18 +1,55 @@
+from asyncio import Semaphore
+import asyncio
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google.generativeai.client import configure
 from google.generativeai.generative_models import GenerativeModel
 import whisper
-import os
 import json
 from whisper.model import Whisper
+from transformers import pipeline
+import torch
+from typing import Any
+from app.executor import _executor
 
+from app.config import get_settings
 from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
 
 load_dotenv(".env.local")
-configure(api_key=os.getenv("GEMINI_API_KEY"))
+configure(api_key=get_settings().gemini_api_key)
+
+GEMMA_PIPE: Any = None
+GEMMA_SEMAPHORE: Semaphore = asyncio.Semaphore()
+
+
+async def get_gemma_pipe():
+    global GEMMA_PIPE
+    if GEMMA_PIPE is not None:
+        return GEMMA_PIPE
+
+    def _initialize_pipe(device):
+        return pipeline(
+            "text-generation",
+            model=gemma_path,
+            tokenizer=gemma_path,
+            device=device,
+            dtype=torch.float16,
+            max_new_tokens=700,
+        )
+
+    try:
+        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
+            _executor, lambda: _initialize_pipe(device=0)
+        )
+    except AssertionError:
+        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
+            _executor, lambda: _initialize_pipe(device=-1)
+        )
+
+    return GEMMA_PIPE
+
 
 core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"
 
