@@ -88,6 +88,12 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
                 status_code=500, detail="Failed to parse transcription JSON"
             )
 
+
+        
+        # return {
+        #     "json": localized_llm_output
+        # }
+
         await mongodb.delete_document("transcribed", {"user_id": applicant_id})
 
         inserted_id = await mongodb.insert_document(

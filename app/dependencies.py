@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
+from app.response_schemas.comparison_format import candidate_comparison_schema
 
 load_dotenv(".env.local")
 configure(api_key=get_settings().gemini_api_key)
@@ -111,7 +112,7 @@ You must follow these rules strictly:
 
 localized_scoring_prompt = (
     """
-You are an expert HR evaluator. Your task is to assess the candidate based on their resume and transcript results and provide a detailed evaluation in a single JSON object.
+You are an expert HR evaluator. Your task is to assess the candidate based on their scores and insights from the scoring and provide a detailed evaluation in a single JSON object.
 
 You must follow these rules strictly:
 1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
@@ -123,13 +124,36 @@ You must follow these rules strictly:
    - `predictive_success` must be an integer between 1 and 100
    - `phrases` must be key phrases no longer than 5 words each
    - `skill_gaps_recommendations` must be at most 50 words
-5. **Adhere strictly to the JSON schema provided below.**
+5. **Adhere strictly to the JSON schema provided below.
+6. **For the raw_score and predictive_success fields, MAKE SURE TO ONLY PROVIDE A NUMBER. DO NOT INCLUDE ANYTHING ELSE.**
 
 """
     + "\n###JSON schema:\n"
     + json.dumps(scoring_response_schema, ensure_ascii=False)
     + "\n###Text to Analyze: \n"
 )
+
+localized_comparison_prompt = (
+    """
+You are an expert HR evaluator. Your task is to compare two candidates based on their resumes and transcript results and produce a single JSON object that strictly follows the schema provided.
+
+You must follow these rules strictly:
+1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
+2. **Do not add any additional fields or information not specified in the schema.**
+3. **All fields in the schema are required.** If information is missing, use `null`.
+4. **Follow the field constraints exactly:**
+   - `better_candidate` must be the exact name identifier provided (e.g., `"candidate_1"` or `"candidate_2"`).
+   - `reason` must be between **50 and 100 words**.
+   - Each item in `highlights` must be a **short key phrase of no more than 10 words**.
+5. **Adhere strictly to the JSON schema provided below.**
+6. **Your final output MUST be valid JSON. No comments. No trailing commas.**
+
+"""
+    + "\n###JSON schema:\n"
+    + json.dumps(candidate_comparison_schema, ensure_ascii=False)
+    + "\n###Text to Analyze:\n"
+)
+
 
 
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"

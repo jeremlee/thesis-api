@@ -3,7 +3,7 @@ scoring_response_schema = {
     "properties": {
         "raw_score": {
             "type": "number",
-            "description": "The candidate's score indicating their fitness for the role, on a scale of 1.00 to 5.00, with exactly two decimal places.",
+            "description": "The candidate's score indicating their fitness for the role, on a scale of 1.00 to 5.00, with exactly two decimal places. Do not include anything else for this field.",
         },
         "reason": {
             "type": "string",
@@ -11,7 +11,7 @@ scoring_response_schema = {
         },
         "predictive_success": {
             "type": "integer",
-            "description": "A percentage (1-100) representing how successful the candidate might be in the role.",
+            "description": "A percentage (1-100) representing how successful the candidate might be in the role. Do not include any words or anything else for this field, only a number from 1-100.",
         },
         "phrases": {
             "type": "array",
