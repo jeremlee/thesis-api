@@ -103,6 +103,8 @@ async def compare_candidates(
                 ),
             )
 
+        print(f"Raw output from pipeline: {raw_output}")
+
         # normalize pipeline output to a single string (handle list/dict outputs)
         if isinstance(raw_output, str):
             out_text = raw_output
@@ -125,6 +127,8 @@ async def compare_candidates(
         else:
             out_text = str(raw_output)
 
+        print(f"Output text from pipeline: {out_text}")
+
         def extract_json_text(s: str) -> str | None:
             # try fenced ```json``` first (non-greedy)
             fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
@@ -136,7 +140,7 @@ async def compare_candidates(
             start = s.find("{")
             while start != -1:
                 try:
-                    obj, idx = decoder.raw_decode(s[start:])
+                    _, idx = decoder.raw_decode(s[start:])
                     return s[start : start + idx]
                 except JSONDecodeError:
                     start = s.find("{", start + 1)
@@ -146,7 +150,9 @@ async def compare_candidates(
         if not json_text:
             raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
 
-        return raw_output
+        print(f"Extracted JSON text: {json_text}")
+
+        return json.loads(json_text)
 
     except Exception as e:
         pass

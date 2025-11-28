@@ -104,7 +104,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
             start = s.find("{")
             while start != -1:
                 try:
-                    obj, idx = decoder.raw_decode(s[start:])
+                    _, idx = decoder.raw_decode(s[start:])
                     return s[start : start + idx]
                 except JSONDecodeError:
                     start = s.find("{", start + 1)
