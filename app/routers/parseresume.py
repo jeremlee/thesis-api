@@ -93,8 +93,6 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
         else:
             out_text = str(raw_output)
 
-        print(f"Raw LLM Output: {out_text}")
-
         def extract_json_text(s: str) -> str | None:
             # try fenced ```json``` first (non-greedy)
             fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)

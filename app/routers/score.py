@@ -9,7 +9,7 @@ from scipy.sparse import csr_matrix
 from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from app.dependencies import scoring_prompt
+from app.dependencies import scoring_prompt, scoring_gemini_model
 
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
