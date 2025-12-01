@@ -7,45 +7,32 @@ from fastapi import HTTPException
 import re
 
 from app.services.mongodb_service import mongodb
-from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
 from app.dependencies import (
     localized_comparison_prompt,
     get_gemma_pipe,
     GEMMA_SEMAPHORE,
 )
-from app.executor import _executor
-from app.services.mongodb_service import mongodb
-from app.services.supabase_service import get_supabase_admin_client
 from transformers import Pipeline
 
 router = APIRouter(prefix="/compare_candidate", tags=["Compare Candidate"])
 
-# concept
 
-
+@router.get("/")
 async def compare_candidates(
     applicant1_id: str, applicant2_id: str, job_id: str
 ) -> Any:
-    supabase_client = get_supabase_admin_client()
     try:
-        # fetch scored candidate documents (gather returns a list)
-        score_candidate_A_doc = (
-            await asyncio.gather(
-                mongodb.find_document(
-                    "scored_candidates",
-                    {"user_id": applicant1_id, "job_id": job_id},
-                ),
-            )
-        )[0]
-        score_candidate_B_doc = (
-            await asyncio.gather(
-                mongodb.find_document(
-                    "scored_candidates",
-                    {"user_id": applicant2_id, "job_id": job_id},
-                ),
-            )
-        )[0]
+        score_candidate_A_doc, score_candidate_B_doc = await asyncio.gather(
+            mongodb.find_document(
+                "scored_candidates",
+                {"user_id": applicant1_id, "job_id": job_id},
+            ),
+            mongodb.find_document(
+                "scored_candidates",
+                {"user_id": applicant2_id, "job_id": job_id},
+            ),
+        )
 
         def _unwrap_number(val):
             # handle MongoDB serialised numeric types like {"$numberDouble":"1.54"}
@@ -103,8 +90,6 @@ async def compare_candidates(
                 ),
             )
 
-        print(f"Raw output from pipeline: {raw_output}")
-
         # normalize pipeline output to a single string (handle list/dict outputs)
         if isinstance(raw_output, str):
             out_text = raw_output
@@ -127,8 +112,6 @@ async def compare_candidates(
         else:
             out_text = str(raw_output)
 
-        print(f"Output text from pipeline: {out_text}")
-
         def extract_json_text(s: str) -> str | None:
             # try fenced ```json``` first (non-greedy)
             fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
@@ -150,9 +133,6 @@ async def compare_candidates(
         if not json_text:
             raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
 
-        print(f"Extracted JSON text: {json_text}")
-
         return json.loads(json_text)
-
     except Exception as e:
         pass
