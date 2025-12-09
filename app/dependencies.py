@@ -126,6 +126,7 @@ You must follow these rules strictly:
    - `skill_gaps_recommendations` must be at most 50 words
 5. **Adhere strictly to the JSON schema provided below.
 6. **For the raw_score and predictive_success fields, MAKE SURE TO ONLY PROVIDE A NUMBER. DO NOT INCLUDE ANYTHING ELSE.**
+7. **DO NOT USE SINGLE QUOTES, USE ONLY DOUBLE QUOTES.**
 
 """
     + "\n###JSON schema:\n"
@@ -142,7 +143,7 @@ You must follow these rules strictly:
 2. **Do not add any additional fields or information not specified in the schema.**
 3. **All fields in the schema are required.** If information is missing, use `null`.
 4. **Follow the field constraints exactly:**
-   - `better_candidate` must be the exact name identifier provided (e.g., `"candidate_1"` or `"candidate_2"`).
+   - `better_candidate` must be the exact name of the candidate. Put the actual name of the candidate.
    - `reason` must be between **50 and 100 words**.
    - Each item in `highlights` must be a **short key phrase of no more than 10 words**.
 5. **Adhere strictly to the JSON schema provided below.**
