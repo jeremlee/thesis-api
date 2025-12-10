@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from typing import Any
 import json
 from json import JSONDecoder, JSONDecodeError
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 import re
 
 from app.services.mongodb_service import mongodb
@@ -20,18 +20,30 @@ router = APIRouter(prefix="/compare_candidate", tags=["Compare Candidate"])
 
 @router.get("/")
 async def compare_candidates(
-    applicant1_id: str, applicant2_id: str, job_id: str
+    applicant1_id: str = Query(..., description="User ID of the first applicant"),
+    applicant2_id: str = Query(..., description="User ID of the second applicant"),
+    job_id: str = Query(..., description="Job ID for which applicants are compared"),
 ) -> Any:
     try:
-        score_candidate_A_doc, score_candidate_B_doc = await asyncio.gather(
-            mongodb.find_document(
-                "scored_candidates",
-                {"user_id": applicant1_id, "job_id": job_id},
-            ),
-            mongodb.find_document(
-                "scored_candidates",
-                {"user_id": applicant2_id, "job_id": job_id},
-            ),
+        score_candidate_A_doc, score_candidate_B_doc, candidate_A, candidate_B = (
+            await asyncio.gather(
+                mongodb.find_document(
+                    "scored_candidates",
+                    {"user_id": applicant1_id, "job_id": job_id},
+                ),
+                mongodb.find_document(
+                    "scored_candidates",
+                    {"user_id": applicant2_id, "job_id": job_id},
+                ),
+                mongodb.find_document(
+                    "parsed_resume",
+                    {"user_id": applicant1_id},
+                ),
+                mongodb.find_document(
+                    "parsed_resume",
+                    {"user_id": applicant2_id},
+                ),
+            )
         )
 
         def _unwrap_number(val):
@@ -63,17 +75,47 @@ async def compare_candidates(
                 f"Recommendations: {recs}"
             )
 
+        if not score_candidate_A_doc or not score_candidate_B_doc:
+            raise HTTPException(
+                status_code=404,
+                detail="Scoring data not found for one or both applicants for the specified job.",
+            )
+
         applicant_A_block = format_score_doc(score_candidate_A_doc)
         applicant_B_block = format_score_doc(score_candidate_B_doc)
 
+        def format_resume_doc(doc):
+            if not doc or "raw_output" not in doc:
+                return "No resume data found."
+            ro = doc["raw_output"]
+            return (
+                f"Name: {ro.get('name', '')}\n"
+                f"City: {ro.get('city', '')}\n"
+                f"Contact: {ro.get('contact_number', '')}\n"
+                f"Email: {ro.get('email', '')}\n"
+                f"Education: {ro.get('educational_background', [])}\n"
+                f"Soft Skills: {ro.get('soft_skills', [])}\n"
+                f"Hard Skills: {ro.get('hard_skills', [])}\n"
+                f"Work Experience: {ro.get('work_experience', [])}\n"
+                f"Projects: {ro.get('projects', [])}"
+            )
+
+        applicant_A_resume = format_resume_doc(candidate_A)
+        applicant_B_resume = format_resume_doc(candidate_B)
         prompt = (
             localized_comparison_prompt
             + "\n\n"
             + "APPLICANT 1 SCORING DATA:\n"
             + applicant_A_block
             + "\n\n"
+            + "APPLICANT 1 RESUME DATA:\n"
+            + applicant_A_resume
+            + "\n\n"
             + "APPLICANT 2 SCORING DATA:\n"
             + applicant_B_block
+            + "\n\n"
+            + "APPLICANT 2 RESUME DATA:\n"
+            + applicant_B_resume
             + "\n\n"
             + "Please compare the two applicants above and provide a concise comparison focused on fit for the job, strengths, weaknesses, and recommended next steps."
         )
