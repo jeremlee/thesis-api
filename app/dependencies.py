@@ -52,11 +52,11 @@ async def get_gemma_pipe():
     return GEMMA_PIPE
 
 
-core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"
+core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency" #use for cultural fit
 
 falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
-
+#gemini is deprecated
 parsing_gemini_model = GenerativeModel(
     model_name="gemini-2.0-flash",
     generation_config={
@@ -94,21 +94,22 @@ You must follow these rules strictly:
     + "\n###Resume Text to Parse: \n"
 )
 
-localized_transcription_prompt = (
-    """
+localized_transcription_prompt = f"""
 You are an expert HR analyst and behavioral psychologist. Your task is to analyze the given text (such as a resume, personal statement, or writing sample) and extract deeper insights in JSON format.
 
 You must follow these rules strictly:
-1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
+1. **Do not include any text before or after the JSON object.** The response must start with `{{` and end with `}}`.
 2. **Adhere exactly to the JSON schema provided below.**
 3. **If a field’s information cannot be inferred confidently, use `null`.**
 4. **Keep responses concise but insightful.**
 5. **Focus on the tone, phrasing, and implied characteristics of the text.**
+6. **For cultural fit insights, base it on these core values:** {core_values}
+
+### JSON schema:
+{json.dumps(transcript_response_schema, ensure_ascii=False)}
+
+### Text to Analyze:
 """
-    + "\n###JSON schema:\n"
-    + json.dumps(transcript_response_schema, ensure_ascii=False)
-    + "\n###Text to Analyze: \n"
-)
 
 localized_scoring_prompt = (
     """
@@ -119,7 +120,7 @@ You must follow these rules strictly:
 2. **Do not add any additional fields or information not specified in the schema.**
 3. **All fields in the schema are required.** If information is missing, use `null`.
 4. **Follow the field constraints exactly:** 
-   - `raw_score` must be a number with exactly two decimal places (1.00-5.00)
+   - `raw_score` must be a number from 1 to 5
    - `reason` must be at least 100 words
    - `predictive_success` must be an integer between 1 and 100
    - `phrases` must be key phrases no longer than 5 words each
@@ -156,7 +157,7 @@ You must follow these rules strictly:
 )
 
 
-
+#deprecated
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"
 extra_transcript_prompt = (
     "dont give me anything but a json with 5 fields(sentimental_analysis, personality_traits, communication_style_insights, interview_insights, cultural_fit_insights)"
@@ -170,6 +171,7 @@ extra_transcript_prompt = (
     "Put them in their appropriate fields as mentioned above."
     "\nTranscript: "
 )  # used in transcribe.py
+#deprecated
 scoring_prompt = (
     "output only a json with 6 fields: raw_score (from 1-5), reason (at least 100 words), phrases (each no more than 5 words), summary (no more than 20 words), predictive_success (1-100), and skill_gaps_recommendations. The raw_score field is the candidate's score based on how fit for the role he is and based on"
     " the resume, the transcript, and the other extra analyses. The reason is the reason justifying the raw_score."

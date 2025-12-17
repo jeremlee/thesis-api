@@ -3,7 +3,7 @@ scoring_response_schema = {
     "properties": {
         "raw_score": {
             "type": "number",
-            "description": "The candidate's score indicating their fitness for the role, on a scale of 1.00 to 5.00, with exactly two decimal places. Do not include anything else for this field.",
+            "description": "The candidate's score indicating their fitness for the role, on a scale from 1 to 5. Must be a number. Do not include anything else for this field.",
         },
         "reason": {
             "type": "string",
@@ -15,7 +15,7 @@ scoring_response_schema = {
         },
         "phrases": {
             "type": "array",
-            "description": "An array of key phrases extracted from the reason which give the user an easy-to-read summary by providing phrases about the user, each phrase must be no more than 5 words.",
+            "description": "An array of key phrases extracted from the reason which give the user an easy-to-read summary by providing phrases about the user, each phrase must be no more than 7 words.",
             "items": {"type": "string"},
         },
         "skill_gaps_recommendations": {
