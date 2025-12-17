@@ -1,10 +1,8 @@
 import asyncio
-from fastapi import APIRouter
 from typing import Any
 import json
-from json import JSONDecoder, JSONDecodeError
-from fastapi import HTTPException, Query
-import re
+from fastapi import HTTPException, Query, APIRouter
+from transformers import Pipeline
 
 from app.services.mongodb_service import mongodb
 from app.executor import _executor
@@ -12,10 +10,41 @@ from app.dependencies import (
     localized_comparison_prompt,
     get_gemma_pipe,
     GEMMA_SEMAPHORE,
+    extract_json_text,
 )
-from transformers import Pipeline
 
 router = APIRouter(prefix="/compare_candidate", tags=["Compare Candidate"])
+
+
+def _unwrap_number(val):
+    # handle MongoDB serialized numeric types like {"$numberDouble":"1.54"}
+    if isinstance(val, dict):
+        for k in ("$numberDouble", "$numberInt", "$numberLong"):
+            if k in val:
+                return val[k]
+    return val
+
+
+def format_score_doc(doc):
+    if not doc:
+        return "No scoring data found."
+    sd = doc.get("score_data", {})
+    raw_score = _unwrap_number(sd.get("raw_score")) or sd.get("raw_score")
+    predictive = _unwrap_number(sd.get("predictive_success")) or sd.get(
+        "predictive_success"
+    )
+    reason = sd.get("reason", "")
+    phrases = sd.get("phrases", [])
+    recs = sd.get("skill_gaps_recommendations", "")
+    return (
+        f"User ID: {doc.get('user_id')}\n"
+        f"Job ID: {doc.get('job_id')}\n"
+        f"Raw Score: {raw_score}\n"
+        f"Predictive Success: {predictive}\n"
+        f"Reason: {reason}\n"
+        f"Phrases: {', '.join(phrases) if phrases else ''}\n"
+        f"Recommendations: {recs}"
+    )
 
 
 @router.get("/")
@@ -25,55 +54,29 @@ async def compare_candidates(
     job_id: str = Query(..., description="Job ID for which applicants are compared"),
 ) -> Any:
     try:
-        score_candidate_A_doc, score_candidate_B_doc, candidate_A, candidate_B = (
-            await asyncio.gather(
-                mongodb.find_document(
-                    "scored_candidates",
-                    {"user_id": applicant1_id, "job_id": job_id},
-                ),
-                mongodb.find_document(
-                    "scored_candidates",
-                    {"user_id": applicant2_id, "job_id": job_id},
-                ),
-                mongodb.find_document(
-                    "parsed_resume",
-                    {"user_id": applicant1_id},
-                ),
-                mongodb.find_document(
-                    "parsed_resume",
-                    {"user_id": applicant2_id},
-                ),
-            )
+        (
+            score_candidate_A_doc,
+            score_candidate_B_doc,
+            candidate_A,
+            candidate_B,
+        ) = await asyncio.gather(
+            mongodb.find_document(
+                "scored_candidates",
+                {"user_id": applicant1_id, "job_id": job_id},
+            ),
+            mongodb.find_document(
+                "scored_candidates",
+                {"user_id": applicant2_id, "job_id": job_id},
+            ),
+            mongodb.find_document(
+                "parsed_resume",
+                {"user_id": applicant1_id},
+            ),
+            mongodb.find_document(
+                "parsed_resume",
+                {"user_id": applicant2_id},
+            ),
         )
-
-        def _unwrap_number(val):
-            # handle MongoDB serialised numeric types like {"$numberDouble":"1.54"}
-            if isinstance(val, dict):
-                for k in ("$numberDouble", "$numberInt", "$numberLong"):
-                    if k in val:
-                        return val[k]
-            return val
-
-        def format_score_doc(doc):
-            if not doc:
-                return "No scoring data found."
-            sd = doc.get("score_data", {})
-            raw_score = _unwrap_number(sd.get("raw_score")) or sd.get("raw_score")
-            predictive = _unwrap_number(sd.get("predictive_success")) or sd.get(
-                "predictive_success"
-            )
-            reason = sd.get("reason", "")
-            phrases = sd.get("phrases", [])
-            recs = sd.get("skill_gaps_recommendations", "")
-            return (
-                f"User ID: {doc.get('user_id')}\n"
-                f"Job ID: {doc.get('job_id')}\n"
-                f"Raw Score: {raw_score}\n"
-                f"Predictive Success: {predictive}\n"
-                f"Reason: {reason}\n"
-                f"Phrases: {', '.join(phrases) if phrases else ''}\n"
-                f"Recommendations: {recs}"
-            )
 
         if not score_candidate_A_doc or not score_candidate_B_doc:
             raise HTTPException(
@@ -153,23 +156,6 @@ async def compare_candidates(
                 out_text = json.dumps(raw_output)
         else:
             out_text = str(raw_output)
-
-        def extract_json_text(s: str) -> str | None:
-            # try fenced ```json``` first (non-greedy)
-            fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
-            if fenced:
-                return fenced.group(1)
-
-            # fallback: find first {...} that json.JSONDecoder can decode
-            decoder = JSONDecoder()
-            start = s.find("{")
-            while start != -1:
-                try:
-                    _, idx = decoder.raw_decode(s[start:])
-                    return s[start : start + idx]
-                except JSONDecodeError:
-                    start = s.find("{", start + 1)
-            return None
 
         json_text = extract_json_text(out_text)
         if not json_text:

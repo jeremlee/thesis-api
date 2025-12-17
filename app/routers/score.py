@@ -2,18 +2,25 @@ import asyncio
 import json
 import re
 import warnings
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Any
 from typing import List
 from scipy.sparse import csr_matrix
 from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-from app.dependencies import scoring_prompt, scoring_gemini_model
+from transformers import Pipeline
 
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
+from app.dependencies import (
+    extract_json_text,
+    localized_scoring_prompt,
+    get_gemma_pipe,
+    GEMMA_SEMAPHORE,
+    scoring_gemini_model,
+)
+
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
@@ -35,7 +42,7 @@ def cosine_similarity_scoring(resume_skills: List[str], job_skills: List[str]):
 
     corpus: list[str] = [" ".join(resume_skills), " ".join(job_skills)]
     vectorizer = TfidfVectorizer()
-    tfidf_matrix: csr_matrix = vectorizer.fit_transform(corpus)  # type: ignore
+    tfidf_matrix: csr_matrix = vectorizer.fit_transform(corpus)
     original_score = sk_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
     scaled_score = 1 + 4 * original_score
     return scaled_score
@@ -45,19 +52,25 @@ def cosine_similarity_scoring(resume_skills: List[str], job_skills: List[str]):
 def convert_objectid(obj):
     from bson import ObjectId
 
-    if obj is None:
-        return None
-    if isinstance(obj, ObjectId):
-        return str(obj)
-    elif isinstance(obj, dict):
-        return {k: convert_objectid(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_objectid(item) for item in obj]
+    match obj:
+        case None:
+            return None
+        case ObjectId():
+            return str(obj)
+        case dict():
+            return {k: convert_objectid(v) for k, v in obj.items()}
+        case list():
+            return [convert_objectid(item) for item in obj]
+
     return obj
 
 
 @router.post("/")
-async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
+async def score_candidate(
+    user_id: str = Query(..., description="User ID"),
+    job_id: str = Query(..., description="Job ID"),
+    applicant_id: str = Query(..., description="Applicant ID"),
+) -> Any:
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data, transcribed, parsed_resume = await asyncio.gather(
@@ -119,7 +132,7 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             raw_score = cosine_similarity_scoring(user_skills, tags)
 
         prompt = (
-            scoring_prompt
+            localized_scoring_prompt
             + "\n Job: "
             + str(job_listing_data.data.get("title", "No title found"))
             + "\nResume: "
@@ -158,59 +171,108 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             )
         )
 
-        raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
-        if raw_output.startswith("```json"):
-            raw_output = re.sub(r"```json|```", "", raw_output).strip()
+        pipe: Pipeline = await get_gemma_pipe()
 
-        raw_output = json.loads(raw_output)
-        raw_output["raw_score"] = float(round(raw_score, 2))
-
-        inserted_id = await mongodb.insert_document(
-            "scored_candidates",
-            {
-                "user_id": user_id,
-                "job_id": job_id,
-                "score_data": raw_output,
-            },
-        )
-
-        if not inserted_id:
-            await asyncio.get_running_loop().run_in_executor(
+        async with GEMMA_SEMAPHORE:
+            raw_output = await asyncio.get_running_loop().run_in_executor(
                 _executor,
-                lambda: supabase_client.table("job_applicants")
-                .delete()
-                .eq("id", applicant_id)
-                .execute(),
+                lambda: pipe(
+                    prompt,
+                    max_new_tokens=800,
+                    return_full_text=False,
+                ),
             )
-            raise HTTPException(status_code=500, detail="Failed to insert score data")
 
-        result = await asyncio.get_running_loop().run_in_executor(
-            _executor,
-            lambda: get_supabase_admin_client()
-            .table("job_applicants")
-            .update({"score_id": str(inserted_id)})
-            .eq("id", applicant_id)
-            .execute(),
-        )
+        print("Raw output from GEMMA scoring pipeline:", raw_output)
 
-        if not result.data:
-            await mongodb.delete_document("scored_candidates", {"_id": inserted_id})
-            raise HTTPException(
-                status_code=500, detail="Failed to update job applicant"
+        # normalize pipeline output to a single string (handle list/dict outputs)
+        if isinstance(raw_output, str):
+            out_text = raw_output
+        elif isinstance(raw_output, dict):
+            out_text = (
+                raw_output.get("generated_text")
+                or raw_output.get("text")
+                or json.dumps(raw_output)
             )
+        elif isinstance(raw_output, list):
+            first = raw_output[0] if raw_output else ""
+            if isinstance(first, dict):
+                out_text = (
+                    first.get("generated_text")
+                    or first.get("text")
+                    or json.dumps(raw_output)
+                )
+            else:
+                out_text = json.dumps(raw_output)
+        else:
+            out_text = str(raw_output)
+
+        print("Normalized output text from GEMMA scoring pipeline:", out_text)            
+
+        json_text = extract_json_text(out_text)
+        if not json_text:
+            raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
+
+        # raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
+        # if raw_output.startswith("```json"):
+        #     raw_output = re.sub(r"```json|```", "", raw_output).strip()
+
+        # raw_output = json.loads(raw_output)
+        # raw_output["raw_score"] = float(round(raw_score, 2))
+
+        print("Final parsed JSON output from GEMMA scoring pipeline:", raw_output)
 
         return {
             "message": "Candidate scored successfully",
-            "score_data": convert_objectid(raw_output),
+            "score_data": raw_output,
         }
+
+        # inserted_id = await mongodb.insert_document(
+        #     "scored_candidates",
+        #     {
+        #         "user_id": user_id,
+        #         "job_id": job_id,
+        #         "score_data": raw_output,
+        #     },
+        # )
+
+        # if not inserted_id:
+        #     await asyncio.get_running_loop().run_in_executor(
+        #         _executor,
+        #         lambda: supabase_client.table("job_applicants")
+        #         .delete()
+        #         .eq("id", applicant_id)
+        #         .execute(),
+        #     )
+        #     raise HTTPException(status_code=500, detail="Failed to insert score data")
+
+        # result = await asyncio.get_running_loop().run_in_executor(
+        #     _executor,
+        #     lambda: get_supabase_admin_client()
+        #     .table("job_applicants")
+        #     .update({"score_id": str(inserted_id)})
+        #     .eq("id", applicant_id)
+        #     .execute(),
+        # )
+
+        # if not result.data:
+        #     await mongodb.delete_document("scored_candidates", {"_id": inserted_id})
+        #     raise HTTPException(
+        #         status_code=500, detail="Failed to update job applicant"
+        #     )
+
+        # return {
+        #     "message": "Candidate scored successfully",
+        #     "score_data": convert_objectid(raw_output),
+        # }
     except Exception as e:
-        await asyncio.get_running_loop().run_in_executor(
-            _executor,
-            lambda: supabase_client.table("job_applicants")
-            .delete()
-            .eq("id", applicant_id)
-            .execute(),
-        )
+        # await asyncio.get_running_loop().run_in_executor(
+        #     _executor,
+        #     lambda: supabase_client.table("job_applicants")
+        #     .delete()
+        #     .eq("id", applicant_id)
+        #     .execute(),
+        # )
 
         # surface a clear HTTP error
         raise HTTPException(status_code=500, detail=str(e))

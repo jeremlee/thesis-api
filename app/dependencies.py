@@ -11,6 +11,8 @@ from transformers import pipeline
 import torch
 from typing import Any
 from app.executor import _executor
+import re
+from json import JSONDecoder, JSONDecodeError
 
 from app.config import get_settings
 from app.response_schemas.resume_format import resume_response_schema
@@ -53,11 +55,29 @@ async def get_gemma_pipe():
     return GEMMA_PIPE
 
 
-core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency" #use for cultural fit
+def extract_json_text(s: str) -> str | None:
+    # try fenced ```json``` first (non-greedy)
+    fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
+    if fenced:
+        return fenced.group(1)
+
+    # fallback: find first {...} that json.JSONDecoder can decode
+    decoder = JSONDecoder()
+    start = s.find("{")
+    while start != -1:
+        try:
+            _, idx = decoder.raw_decode(s[start:])
+            return s[start : start + idx]
+        except JSONDecodeError:
+            start = s.find("{", start + 1)
+    return None
+
+
+core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"  # use for cultural fit
 
 falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
-#gemini is deprecated
+# gemini is deprecated
 parsing_gemini_model = GenerativeModel(
     model_name="gemini-2.0-flash",
     generation_config={
@@ -182,7 +202,7 @@ You must follow these rules strictly:
 )
 
 
-#deprecated
+# deprecated
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"
 extra_transcript_prompt = (
     "dont give me anything but a json with 5 fields(sentimental_analysis, personality_traits, communication_style_insights, interview_insights, cultural_fit_insights)"
@@ -196,7 +216,7 @@ extra_transcript_prompt = (
     "Put them in their appropriate fields as mentioned above."
     "\nTranscript: "
 )  # used in transcribe.py
-#deprecated
+# deprecated
 scoring_prompt = (
     "output only a json with 6 fields: raw_score (from 1-5), reason (at least 100 words), phrases (each no more than 5 words), summary (no more than 20 words), predictive_success (1-100), and skill_gaps_recommendations. The raw_score field is the candidate's score based on how fit for the role he is and based on"
     " the resume, the transcript, and the other extra analyses. The reason is the reason justifying the raw_score."
