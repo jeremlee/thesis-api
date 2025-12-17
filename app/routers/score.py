@@ -108,7 +108,7 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             if "tags" in tag and "name" in tag["tags"]
         ]
 
-        raw_score = 0.0
+        raw_score = 0
         if not parsed_resume:
             parsed_resume = {"raw_output": "No parsed resume available"}
         else:
@@ -163,7 +163,7 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
         raw_output = json.loads(raw_output)
-        raw_output["raw_score"] = float(round(raw_score, 2))
+        raw_output["raw_score"] = raw_score
 
         inserted_id = await mongodb.insert_document(
             "scored_candidates",

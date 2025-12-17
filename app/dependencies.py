@@ -114,27 +114,39 @@ You must follow these rules strictly:
 
 localized_scoring_prompt = (
     """
-You are an expert HR evaluator. Your task is to assess the candidate based on their scores and insights from the scoring and provide a detailed evaluation in a single JSON object.
+You are an expert HR evaluator. Your task is to assess the candidate based on their scores and insights and return a single JSON object.
 
-You must follow these rules strictly:
-1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
-2. **Do not add any additional fields or information not specified in the schema.**
-3. **All fields in the schema are required.** If information is missing, use `null`.
-4. **Follow the field constraints exactly:** 
-   - `raw_score` must be a number from 1 to 5
-   - `reason` must be at least 100 words
-   - `predictive_success` must be an integer between 1 and 100
-   - `phrases` must be key phrases no longer than 5 words each
-   - `skill_gaps_recommendations` must be at most 50 words
-5. **Adhere strictly to the JSON schema provided below.
-6. **For the raw_score and predictive_success fields, MAKE SURE TO ONLY PROVIDE A NUMBER. DO NOT INCLUDE ANYTHING ELSE.**
-7. **DO NOT USE SINGLE QUOTES, USE ONLY DOUBLE QUOTES.**
+STRICT RULES — FOLLOW EXACTLY:
+1. Output MUST be a single valid JSON object.
+2. The response MUST start with `{` and end with `}`.
+3. Do NOT include any text before or after the JSON.
+4. Do NOT include comments, explanations, or markdown.
+5. Do NOT add any fields not defined in the schema.
+6. ALL fields in the schema are required. Use null if information is missing.
+7. Use ONLY double quotes (`"`). Single quotes (`'`) are strictly forbidden.
+8. This is JSON, NOT Python. Do NOT use Python dict syntax.
 
+FIELD CONSTRAINTS (MANDATORY):
+- `raw_score`: number between 1 and 5 ONLY (no text, no symbols)
+- `reason`: at least 100 words
+- `predictive_success`: integer between 1 and 100 ONLY
+- `phrases`: array of short phrases, each no more than 5 words
+- `skill_gaps_recommendations`: at most 50 words
+
+INVALID OUTPUT (DO NOT DO THIS):
+{'raw_score': 4}
+
+VALID OUTPUT FORMAT:
+{"raw_score": 4}
+
+Adhere strictly to the JSON schema below.
 """
-    + "\n###JSON schema:\n"
+    + "\n### JSON Schema:\n"
     + json.dumps(scoring_response_schema, ensure_ascii=False)
-    + "\n###Text to Analyze: \n"
+    + "\n### Text to Analyze:\n"
+    + "\n{\n"
 )
+
 
 localized_comparison_prompt = (
     """
