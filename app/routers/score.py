@@ -177,12 +177,14 @@ async def score_candidate(
             raw_output = await asyncio.get_running_loop().run_in_executor(
                 _executor,
                 lambda: pipe(
-                    prompt,
+                    prompt + "\n\n{",
                     max_new_tokens=800,
+                    temperature=0.2,
+                    repetition_penalty=1.15,
                     return_full_text=False,
                 ),
             )
-
+        
         print("Raw output from GEMMA scoring pipeline:", raw_output)
 
         # normalize pipeline output to a single string (handle list/dict outputs)
@@ -206,6 +208,9 @@ async def score_candidate(
                 out_text = json.dumps(raw_output)
         else:
             out_text = str(raw_output)
+            
+        out_text = "{" + out_text.lstrip()
+
 
         print("Normalized output text from GEMMA scoring pipeline:", out_text)            
 
@@ -220,11 +225,16 @@ async def score_candidate(
         # raw_output = json.loads(raw_output)
         # raw_output["raw_score"] = float(round(raw_score, 2))
 
-        print("Final parsed JSON output from GEMMA scoring pipeline:", raw_output)
+        try:
+            parsed_json = json.loads(json_text)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=500, detail=f"Invalid JSON generated: {e}")
+
+        print("Final parsed JSON output from GEMMA scoring pipeline:", parsed_json)
 
         return {
             "message": "Candidate scored successfully",
-            "score_data": raw_output,
+            "score_data": parsed_json,
         }
 
         # inserted_id = await mongodb.insert_document(

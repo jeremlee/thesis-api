@@ -134,26 +134,34 @@ You must follow these rules strictly:
 
 localized_scoring_prompt = (
     """
-You are an expert HR evaluator. Your task is to assess the candidate based on their scores and insights from the scoring and provide a detailed evaluation in a single JSON object.
+You are an expert HR evaluator.
 
-You must follow these rules strictly:
-1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
-2. **Do not add any additional fields or information not specified in the schema.**
-3. **All fields in the schema are required.** If information is missing, use `null`.
-4. **Follow the field constraints exactly:** 
-   - `raw_score` must be a number from 1 to 5
-   - `reason` must be at least 100 words
-   - `predictive_success` must be an integer between 1 and 100
-   - `phrases` must be key phrases no longer than 5 words each
-   - `skill_gaps_recommendations` must be at most 50 words
-5. **Adhere strictly to the JSON schema provided below.
-6. **For the raw_score and predictive_success fields, MAKE SURE TO ONLY PROVIDE A NUMBER. DO NOT INCLUDE ANYTHING ELSE.**
-7. **DO NOT USE SINGLE QUOTES, USE ONLY DOUBLE QUOTES.**
+Your task is to produce EXACTLY ONE valid JSON object that conforms strictly to the provided JSON schema.
+
+ABSOLUTE RULES (NON-NEGOTIABLE):
+1. Output MUST be valid JSON.
+2. Output MUST start with `{` and end with `}`.
+3. Output MUST contain ONLY the JSON object — no explanations, no labels, no markdown, no backticks.
+4. Use ONLY double quotes (`"`). Single quotes (`'`) are forbidden.
+5. Do NOT include percent signs, words, or symbols in numeric fields.
+6. Do NOT include field names as headings (e.g., "Predictive Success:").
+7. Do NOT include comments, trailing commas, or extra whitespace outside the JSON object.
+
+SCHEMA COMPLIANCE RULES:
+1. Do NOT add, remove, or rename fields.
+2. ALL fields in the schema are required.
+3. If information is missing or cannot be inferred, set the value to null.
+4. Follow field constraints exactly:
+   - "raw_score": number between 1 and 5 (number only)
+   - "predictive_success": integer between 1 and 100 (number only)
+   - "reason": at least 100 words
+   - "phrases": array of short phrases, each no more than 5 words summarizing the reason
+   - "skill_gaps_recommendations": no more than 50 words
 
 """
-    + "\n###JSON schema:\n"
+    + "\n### JSON Schema:\n"
     + json.dumps(scoring_response_schema, ensure_ascii=False)
-    + "\n###Text to Analyze: \n"
+    + "\n### Text to Analyze:\n"
 )
 
 localized_comparison_prompt = (
