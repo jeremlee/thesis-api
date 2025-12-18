@@ -179,7 +179,9 @@ async def score_candidate(
                 lambda: pipe(
                     prompt + "\n\n{",
                     max_new_tokens=800,
-                    temperature=0.2,
+                    temperature=0.7,
+                    top_p=0.9,
+                    do_sample=True,
                     repetition_penalty=1.15,
                     return_full_text=False,
                 ),
