@@ -18,6 +18,19 @@ from app.services.supabase_service import get_supabase_admin_client
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 
+def extract_json(text: str) -> dict:
+    import re, json
+
+    text = text.replace("```json", "").replace("```", "")
+    text = text.replace("“", '"').replace("”", '"')
+
+    match = re.search(r"\{[\s\S]*?\}", text)
+    if not match:
+        raise ValueError("No JSON object found")
+
+    return json.loads(match.group())
+
+
 
 async def extract_text_from_pdf(pdf_url: str) -> str:
     def _extract_text():
@@ -58,6 +71,11 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
 
         text: str = await extract_text_from_pdf(pdf_url)
         pipe: Pipeline = await get_gemma_pipe()
+        brace_id = pipe.tokenizer.convert_tokens_to_ids("}")
+        if brace_id is None or brace_id == pipe.tokenizer.unk_token_id:
+            eos_token_id = pipe.tokenizer.eos_token_id
+        else:
+            eos_token_id = [pipe.tokenizer.eos_token_id, brace_id]
 
         async with GEMMA_SEMAPHORE:
             raw_output = await asyncio.get_running_loop().run_in_executor(
@@ -65,7 +83,12 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
                 lambda: pipe(
                     localized_parsing_prompt + text,
                     max_new_tokens=3000,
+                    do_sample=True,
+                    temperature=0.6,       
+                    top_p=0.9,
+                    repetition_penalty=1.2, 
                     return_full_text=False,
+                    eos_token_id=eos_token_id,
                 ),
             )
 
@@ -93,6 +116,9 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
         else:
             out_text = str(raw_output)
 
+        out_text = out_text.strip()
+        out_text = re.sub(r'^["\']+|["\']+$', '', out_text)  # remove leading/trailing quotes
+        out_text = re.sub(r'```json|```', '', out_text)      # remove code fences
         def extract_json_text(s: str) -> str | None:
             # try fenced ```json``` first (non-greedy)
             fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
@@ -110,10 +136,16 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
                     start = s.find("{", start + 1)
             return None
 
-        json_text = extract_json_text(out_text)
+        json_text = extract_json(out_text)
         if not json_text:
             raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
-
+        parsed_json = json.loads(json_text)["parsed_resume"]
+        if parsed_json is None:
+            raise HTTPException(status_code=500, detail="parsed_resume key not found")
+        # return {
+        # "message": "Resume parsed successfully",
+        # "parsed_resume": parsed_json,
+        # } #for swagger purposes
         try:
             localized_llm_output = json.loads(json_text)["parsed_resume"]
         except JSONDecodeError as e:

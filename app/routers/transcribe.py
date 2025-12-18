@@ -19,6 +19,19 @@ from app.services.supabase_service import get_supabase_admin_client
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
 
 
+def extract_json(text: str) -> dict:
+    import re, json
+
+    text = text.replace("```json", "").replace("```", "")
+    text = text.replace("“", '"').replace("”", '"')
+
+    match = re.search(r"\{[\s\S]*?\}", text)
+    if not match:
+        raise ValueError("No JSON object found")
+
+    return json.loads(match.group())
+
+
 @router.post("/")
 async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
     try:
@@ -41,13 +54,24 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
         if isinstance(text_content, list):
             text_content = " ".join([str(t) for t in text_content])
 
+        brace_id = pipe.tokenizer.convert_tokens_to_ids("}")
+        if brace_id is None or brace_id == pipe.tokenizer.unk_token_id:
+            eos_token_id = pipe.tokenizer.eos_token_id
+        else:
+            eos_token_id = [pipe.tokenizer.eos_token_id, brace_id]
+
         async with GEMMA_SEMAPHORE:
             raw_output = await asyncio.get_running_loop().run_in_executor(
                 _executor,
                 lambda: pipe(
                     localized_transcription_prompt + text_content,
-                    max_new_tokens=700,
+                    max_new_tokens=800,
+                    do_sample=True,
+                    temperature=0.6,       
+                    top_p=0.9,
+                    repetition_penalty=1.2, 
                     return_full_text=False,
+                    eos_token_id=eos_token_id,
                 ),
             )
 
@@ -62,7 +86,7 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
             out_text = str(raw_output)
 
         out_text = str(out_text)
-
+        out_text = out_text.strip()
         # try to extract JSON from ```json``` fenced block first, fallback to first {...}..{...}
         json_block_pat = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
         json_match = json_block_pat.search(out_text)
@@ -82,6 +106,10 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
                 raise HTTPException(
                     status_code=500, detail="Failed to parse transcription JSON"
                 )
+            # return {
+            #     "message": "Transcription processed successfully",
+            #     "transcribed_data": localized_llm_output,
+            # } # for swagger purposes
         else:
             raise HTTPException(
                 status_code=500, detail="Failed to parse transcription JSON"
