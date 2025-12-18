@@ -19,7 +19,6 @@ from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
 from app.response_schemas.comparison_format import candidate_comparison_schema
-from app.response_schemas.bottleneck_format import bottleneck_response_schema
 
 load_dotenv(".env.local")
 configure(api_key=get_settings().gemini_api_key)
@@ -79,27 +78,34 @@ falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
 # gemini is deprecated
 parsing_gemini_model = GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-2.5-flash",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": resume_response_schema,
     },
 )
 transcript_gemini_model = GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-2.5-flash",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": transcript_response_schema,
     },
 )
 scoring_gemini_model = GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-2.5-flash",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": scoring_response_schema,
     },
 )
 transcription_model: Whisper = whisper.load_model("base")
+comparing_gemini_model = GenerativeModel(
+    model_name="gemini-2.5-flash",
+    generation_config={
+        "response_mime_type": "application/json",
+        "response_schema": candidate_comparison_schema,
+    },
+)
 
 localized_parsing_prompt = (
     """
@@ -128,7 +134,6 @@ You must follow these rules strictly:
 
 ### JSON schema:
 {json.dumps(transcript_response_schema, ensure_ascii=False)}
-
 ### Text to Analyze:
 """
 
@@ -184,31 +189,6 @@ You must follow these rules strictly:
     + json.dumps(candidate_comparison_schema, ensure_ascii=False)
     + "\n###Text to Analyze:\n"
 )
-
-
-localized_bottleneck_prompt = (
-    """
-You are an expert HR operations analyst and process auditor. Your task is to analyze audit logs and identify a single, clear process bottleneck, then produce a JSON object that strictly follows the schema provided.
-
-You must follow these rules strictly:
-1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
-2. **Do not add any additional fields or information not specified in the schema.**
-3. **All fields in the schema are required.** If information is missing or cannot be inferred with confidence, use `null`.
-4. **Follow the field constraints exactly:**
-   - `description` must be a **very short summary** of the bottleneck (no more than **5 words**).
-   - `full_description` must be a **thorough and specific explanation** of the bottleneck and must be **at least 100 words**.
-   - `category` must be **one of the allowed values** defined in the schema.
-   - `date` must follow the **MM/YY/DD** format.
-   - `time` must follow the **HH:MM (24-hour)** format.
-5. **Adhere strictly to the JSON schema provided below.**
-6. **Your final output MUST be valid JSON. No comments. No trailing commas.**
-
-"""
-    + "\n###JSON schema:\n"
-    + json.dumps(bottleneck_response_schema, ensure_ascii=False)
-    + "\n###Audit Logs to Analyze:\n"
-)
-
 
 # deprecated
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"

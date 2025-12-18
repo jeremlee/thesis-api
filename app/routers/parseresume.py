@@ -6,15 +6,12 @@ import re
 import requests
 import PyPDF2
 import io
-from transformers import Pipeline
-import PyPDF2
-from json import JSONDecoder, JSONDecodeError
 
-from app.dependencies import localized_parsing_prompt, get_gemma_pipe, GEMMA_SEMAPHORE
 from app.executor import _executor
 from app.services.cloudinary_service import fetch_file, generate_signed_url
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
+from app.dependencies import parsing_gemini_model, parsing_prompt
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 
@@ -57,67 +54,15 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
             raise HTTPException(status_code=400, detail="File URL not found")
 
         text: str = await extract_text_from_pdf(pdf_url)
-        pipe: Pipeline = await get_gemma_pipe()
 
-        async with GEMMA_SEMAPHORE:
-            raw_output = await asyncio.get_running_loop().run_in_executor(
-                _executor,
-                lambda: pipe(
-                    localized_parsing_prompt + text,
-                    max_new_tokens=3000,
-                    return_full_text=False,
-                ),
-            )
-
-        print(f"Raw output from pipeline: {raw_output}")
-
-        # normalize pipeline output to a single string (handle list/dict outputs)
-        if isinstance(raw_output, str):
-            out_text = raw_output
-        elif isinstance(raw_output, dict):
-            out_text = (
-                raw_output.get("generated_text")
-                or raw_output.get("text")
-                or json.dumps(raw_output)
-            )
-        elif isinstance(raw_output, list):
-            first = raw_output[0] if raw_output else ""
-            if isinstance(first, dict):
-                out_text = (
-                    first.get("generated_text")
-                    or first.get("text")
-                    or json.dumps(raw_output)
-                )
-            else:
-                out_text = json.dumps(raw_output)
-        else:
-            out_text = str(raw_output)
-
-        def extract_json_text(s: str) -> str | None:
-            # try fenced ```json``` first (non-greedy)
-            fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
-            if fenced:
-                return fenced.group(1)
-
-            # fallback: find first {...} that json.JSONDecoder can decode
-            decoder = JSONDecoder()
-            start = s.find("{")
-            while start != -1:
-                try:
-                    _, idx = decoder.raw_decode(s[start:])
-                    return s[start : start + idx]
-                except JSONDecodeError:
-                    start = s.find("{", start + 1)
-            return None
-
-        json_text = extract_json_text(out_text)
-        if not json_text:
-            raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
-
-        try:
-            localized_llm_output = json.loads(json_text)["parsed_resume"]
-        except JSONDecodeError as e:
-            raise HTTPException(status_code=500, detail=f"Invalid JSON from LLM: {e}")
+        raw_output = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: parsing_gemini_model.generate_content(
+                parsing_prompt + "\n" + text
+            ).text.strip(),
+        )
+        if raw_output.startswith("```json"):
+            raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
         await mongodb.delete_document(
             "parsed_resume",
@@ -128,7 +73,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
             "parsed_resume",
             {
                 "user_id": applicant_id,
-                "raw_output": localized_llm_output,
+                "raw_output": json.loads(raw_output),
             },
         )
 

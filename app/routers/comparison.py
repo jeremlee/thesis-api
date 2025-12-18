@@ -2,16 +2,10 @@ import asyncio
 from typing import Any
 import json
 from fastapi import HTTPException, Query, APIRouter
-from transformers import Pipeline
+import re
 
 from app.services.mongodb_service import mongodb
-from app.executor import _executor
-from app.dependencies import (
-    localized_comparison_prompt,
-    get_gemma_pipe,
-    GEMMA_SEMAPHORE,
-    extract_json_text,
-)
+from app.dependencies import localized_comparison_prompt, comparing_gemini_model
 
 router = APIRouter(prefix="/compare_candidate", tags=["Compare Candidate"])
 
@@ -123,44 +117,10 @@ async def compare_candidates(
             + "Please compare the two applicants above and provide a concise comparison focused on fit for the job, strengths, weaknesses, and recommended next steps."
         )
 
-        pipe: Pipeline = await get_gemma_pipe()
+        raw_output = comparing_gemini_model.generate_content(prompt).text.strip()
+        if raw_output.startswith("```json"):
+            raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
-        async with GEMMA_SEMAPHORE:
-            raw_output = await asyncio.get_running_loop().run_in_executor(
-                _executor,
-                lambda: pipe(
-                    prompt,
-                    max_new_tokens=800,
-                    return_full_text=False,
-                ),
-            )
-
-        # normalize pipeline output to a single string (handle list/dict outputs)
-        if isinstance(raw_output, str):
-            out_text = raw_output
-        elif isinstance(raw_output, dict):
-            out_text = (
-                raw_output.get("generated_text")
-                or raw_output.get("text")
-                or json.dumps(raw_output)
-            )
-        elif isinstance(raw_output, list):
-            first = raw_output[0] if raw_output else ""
-            if isinstance(first, dict):
-                out_text = (
-                    first.get("generated_text")
-                    or first.get("text")
-                    or json.dumps(raw_output)
-                )
-            else:
-                out_text = json.dumps(raw_output)
-        else:
-            out_text = str(raw_output)
-
-        json_text = extract_json_text(out_text)
-        if not json_text:
-            raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
-
-        return json.loads(json_text)
-    except Exception as e:
+        return json.loads(raw_output)
+    except Exception:
         pass
