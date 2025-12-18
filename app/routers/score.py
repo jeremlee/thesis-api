@@ -24,6 +24,19 @@ from app.dependencies import (
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
+def extract_json(text: str) -> dict:
+    import re, json
+
+    text = text.replace("```json", "").replace("```", "")
+    text = text.replace("“", '"').replace("”", '"')
+
+    match = re.search(r"\{[\s\S]*?\}", text)
+    if not match:
+        raise ValueError("No JSON object found")
+
+    return json.loads(match.group())
+
+
 
 # Scoring without Gemini
 # lets use this later nalang, first we try gemma's scoring
@@ -172,18 +185,24 @@ async def score_candidate(
         )
 
         pipe: Pipeline = await get_gemma_pipe()
+        brace_id = pipe.tokenizer.convert_tokens_to_ids("}")
+        if brace_id is None or brace_id == pipe.tokenizer.unk_token_id:
+            eos_token_id = pipe.tokenizer.eos_token_id
+        else:
+            eos_token_id = [pipe.tokenizer.eos_token_id, brace_id]
 
         async with GEMMA_SEMAPHORE:
             raw_output = await asyncio.get_running_loop().run_in_executor(
                 _executor,
                 lambda: pipe(
-                    prompt + "\n\n{",
+                    prompt,
                     max_new_tokens=800,
-                    temperature=0.7,
-                    top_p=0.9,
                     do_sample=True,
-                    repetition_penalty=1.15,
+                    temperature=0.6,       
+                    top_p=0.9,
+                    repetition_penalty=1.2, 
                     return_full_text=False,
+                    eos_token_id=eos_token_id,
                 ),
             )
         
@@ -211,14 +230,15 @@ async def score_candidate(
         else:
             out_text = str(raw_output)
             
-        out_text = "{" + out_text.lstrip()
+        out_text = out_text.strip()
+      
 
 
         print("Normalized output text from GEMMA scoring pipeline:", out_text)            
 
-        json_text = extract_json_text(out_text)
-        if not json_text:
-            raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
+        # json_text = extract_json_text(out_text)
+        # if not json_text:
+        #     raise HTTPException(status_code=500, detail="Failed to parse resume JSON")
 
         # raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
         # if raw_output.startswith("```json"):
@@ -228,8 +248,8 @@ async def score_candidate(
         # raw_output["raw_score"] = float(round(raw_score, 2))
 
         try:
-            parsed_json = json.loads(json_text)
-        except json.JSONDecodeError as e:
+            parsed_json = extract_json(out_text)  # already returns dict
+        except Exception as e:
             raise HTTPException(status_code=500, detail=f"Invalid JSON generated: {e}")
 
         print("Final parsed JSON output from GEMMA scoring pipeline:", parsed_json)

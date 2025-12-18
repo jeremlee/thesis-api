@@ -135,6 +135,7 @@ You must follow these rules strictly:
 localized_scoring_prompt = (
     """
 You are an expert HR evaluator.
+You must output ONLY a JSON object.
 
 Your task is to produce EXACTLY ONE valid JSON object that conforms strictly to the provided JSON schema.
 
