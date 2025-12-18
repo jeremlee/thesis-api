@@ -78,21 +78,21 @@ falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
 # gemini is deprecated
 parsing_gemini_model = GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": resume_response_schema,
     },
 )
 transcript_gemini_model = GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": transcript_response_schema,
     },
 )
 scoring_gemini_model = GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": scoring_response_schema,
@@ -100,7 +100,7 @@ scoring_gemini_model = GenerativeModel(
 )
 transcription_model: Whisper = whisper.load_model("base")
 comparing_gemini_model = GenerativeModel(
-    model_name="gemini-2.5-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": candidate_comparison_schema,
