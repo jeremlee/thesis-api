@@ -5,10 +5,9 @@ import json
 import re
 
 from app.dependencies import (
-    localized_transcription_prompt,
     transcription_model,
-    GEMMA_SEMAPHORE,
-    get_gemma_pipe,
+    transcript_gemini_model,
+    extra_transcript_prompt,
 )
 from app.services.cloudinary_service import fetch_file
 from app.services.mongodb_service import mongodb
@@ -32,60 +31,23 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
 
         result = transcription_model.transcribe(video_url)
 
-        # localized LLM
-        pipe = await get_gemma_pipe()
+        extra_analysis = transcript_gemini_model.generate_content(
+            f"{extra_transcript_prompt}{result['text']}"
+        )
+        gemini_json_string = extra_analysis.text.strip()
 
-        text_content = result.get("text", "")
-
-        # Ensure transcription text is a single string (join lists if necessary)
-        if isinstance(text_content, list):
-            text_content = " ".join([str(t) for t in text_content])
-
-        async with GEMMA_SEMAPHORE:
-            raw_output = await asyncio.get_running_loop().run_in_executor(
-                _executor,
-                lambda: pipe(
-                    localized_transcription_prompt + text_content,
-                    max_new_tokens=700,
-                    return_full_text=False,
-                ),
-            )
-
-        # normalize pipeline return value (HF text-generation returns list[dict] with "generated_text")
-        if isinstance(raw_output, list):
-            out_text = (
-                raw_output[0].get("generated_text")
-                if isinstance(raw_output[0], dict)
-                else str(raw_output[0])
-            )
-        else:
-            out_text = str(raw_output)
-
-        out_text = str(out_text)
-
-        # try to extract JSON from ```json``` fenced block first, fallback to first {...}..{...}
-        json_block_pat = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
-        json_match = json_block_pat.search(out_text)
-
-        if json_match:
-            json_text = json_match.group(1)
-        else:
-            brace_match = re.search(r"(\{.*\})", out_text, re.S)
-            json_text = brace_match.group(1) if brace_match else None
-
-        if json_text:
-            try:
-                localized_llm_output = json.loads(json_text)
-                localized_llm_output.update({"transcription": result.get("text", "")})
-            except json.JSONDecodeError:
-                # If parsing fails, raise an error
-                raise HTTPException(
-                    status_code=500, detail="Failed to parse transcription JSON"
-                )
-        else:
+        if gemini_json_string.startswith("```json"):
+            gemini_json_string = re.sub(r"```json|```", "", gemini_json_string).strip()
+        try:
+            extra_analysis_data = json.loads(gemini_json_string)
+        except json.JSONDecodeError as json_e:
             raise HTTPException(
-                status_code=500, detail="Failed to parse transcription JSON"
+                status_code=500,
+                detail=f"Failed to parse analysis from AI model. Error: {str(json_e)}",
             )
+
+        result = {"transcription": result["text"]}
+        result.update(extra_analysis_data)
 
         await mongodb.delete_document("transcribed", {"user_id": applicant_id})
 
@@ -93,7 +55,7 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
             "transcribed",
             {
                 "user_id": applicant_id,
-                "transcription": localized_llm_output,
+                "transcription": result,
             },
         )
 
