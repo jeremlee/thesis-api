@@ -19,6 +19,7 @@ from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
 from app.response_schemas.comparison_format import candidate_comparison_schema
+from sentence_transformers import SentenceTransformer
 
 load_dotenv(".env.local")
 configure(api_key=get_settings().gemini_api_key)
@@ -53,6 +54,10 @@ async def get_gemma_pipe():
 
     return GEMMA_PIPE
 
+
+model_path = "all-mpnet-base-v2"
+
+embedding_model = SentenceTransformer(model_path)
 
 def extract_json_text(s: str) -> str | None:
     # try fenced ```json``` first (non-greedy)
