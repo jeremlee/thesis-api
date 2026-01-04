@@ -11,13 +11,15 @@ from transformers import pipeline
 import torch
 from typing import Any
 from app.executor import _executor
+import re
+from json import JSONDecoder, JSONDecodeError
 
 from app.config import get_settings
 from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
 from app.response_schemas.comparison_format import candidate_comparison_schema
-from app.response_schemas.bottleneck_format import bottleneck_response_schema
+from sentence_transformers import SentenceTransformer
 
 load_dotenv(".env.local")
 configure(api_key=get_settings().gemini_api_key)
@@ -53,33 +55,63 @@ async def get_gemma_pipe():
     return GEMMA_PIPE
 
 
-core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency" #use for cultural fit
+model_path = "all-mpnet-base-v2"
+
+embedding_model = SentenceTransformer(model_path)
+
+
+def extract_json_text(s: str) -> str | None:
+    # try fenced ```json``` first (non-greedy)
+    fenced = re.search(r"```json\s*(\{.*?\})\s*```", s, re.S)
+    if fenced:
+        return fenced.group(1)
+
+    # fallback: find first {...} that json.JSONDecoder can decode
+    decoder = JSONDecoder()
+    start = s.find("{")
+    while start != -1:
+        try:
+            _, idx = decoder.raw_decode(s[start:])
+            return s[start : start + idx]
+        except JSONDecodeError:
+            start = s.find("{", start + 1)
+    return None
+
+
+core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"  # use for cultural fit
 
 falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
-#gemini is deprecated
+
 parsing_gemini_model = GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": resume_response_schema,
     },
 )
 transcript_gemini_model = GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": transcript_response_schema,
     },
 )
 scoring_gemini_model = GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-2.5-flash-lite",
     generation_config={
         "response_mime_type": "application/json",
         "response_schema": scoring_response_schema,
     },
 )
 transcription_model: Whisper = whisper.load_model("base")
+comparing_gemini_model = GenerativeModel(
+    model_name="gemini-2.5-flash-lite",
+    generation_config={
+        "response_mime_type": "application/json",
+        "response_schema": candidate_comparison_schema,
+    },
+)
 
 localized_parsing_prompt = (
     """
@@ -108,23 +140,35 @@ You must follow these rules strictly:
 
 ### JSON schema:
 {json.dumps(transcript_response_schema, ensure_ascii=False)}
-
 ### Text to Analyze:
 """
 
 localized_scoring_prompt = (
     """
-You are an expert HR evaluator. Your task is to assess the candidate based on their scores and insights and return a single JSON object.
+You are an expert HR evaluator.
+You must output ONLY a JSON object.
 
-STRICT RULES — FOLLOW EXACTLY:
-1. Output MUST be a single valid JSON object.
-2. The response MUST start with `{` and end with `}`.
-3. Do NOT include any text before or after the JSON.
-4. Do NOT include comments, explanations, or markdown.
-5. Do NOT add any fields not defined in the schema.
-6. ALL fields in the schema are required. Use null if information is missing.
-7. Use ONLY double quotes (`"`). Single quotes (`'`) are strictly forbidden.
-8. This is JSON, NOT Python. Do NOT use Python dict syntax.
+Your task is to produce EXACTLY ONE valid JSON object that conforms strictly to the provided JSON schema.
+
+ABSOLUTE RULES (NON-NEGOTIABLE):
+1. Output MUST be valid JSON.
+2. Output MUST start with `{` and end with `}`.
+3. Output MUST contain ONLY the JSON object — no explanations, no labels, no markdown, no backticks.
+4. Use ONLY double quotes (`"`). Single quotes (`'`) are forbidden.
+5. Do NOT include percent signs, words, or symbols in numeric fields.
+6. Do NOT include field names as headings (e.g., "Predictive Success:").
+7. Do NOT include comments, trailing commas, or extra whitespace outside the JSON object.
+
+SCHEMA COMPLIANCE RULES:
+1. Do NOT add, remove, or rename fields.
+2. ALL fields in the schema are required.
+3. If information is missing or cannot be inferred, set the value to null.
+4. Follow field constraints exactly:
+   - "raw_score": number between 1 and 5 (number only)
+   - "predictive_success": integer between 1 and 100 (number only)
+   - "reason": at least 100 words
+   - "phrases": array of short phrases, each no more than 5 words summarizing the reason
+   - "skill_gaps_recommendations": no more than 50 words
 
 FIELD CONSTRAINTS (MANDATORY):
 - `raw_score`: number between 1 and 5 ONLY (no text, no symbols)
@@ -144,7 +188,6 @@ Adhere strictly to the JSON schema below.
     + "\n### JSON Schema:\n"
     + json.dumps(scoring_response_schema, ensure_ascii=False)
     + "\n### Text to Analyze:\n"
-    + "\n{\n"
 )
 
 
@@ -169,32 +212,7 @@ You must follow these rules strictly:
     + "\n###Text to Analyze:\n"
 )
 
-
-localized_bottleneck_prompt = (
-    """
-You are an expert HR operations analyst and process auditor. Your task is to analyze audit logs and identify a single, clear process bottleneck, then produce a JSON object that strictly follows the schema provided.
-
-You must follow these rules strictly:
-1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
-2. **Do not add any additional fields or information not specified in the schema.**
-3. **All fields in the schema are required.** If information is missing or cannot be inferred with confidence, use `null`.
-4. **Follow the field constraints exactly:**
-   - `description` must be a **very short summary** of the bottleneck (no more than **5 words**).
-   - `full_description` must be a **thorough and specific explanation** of the bottleneck and must be **at least 100 words**.
-   - `category` must be **one of the allowed values** defined in the schema.
-   - `date` must follow the **MM/YY/DD** format.
-   - `time` must follow the **HH:MM (24-hour)** format.
-5. **Adhere strictly to the JSON schema provided below.**
-6. **Your final output MUST be valid JSON. No comments. No trailing commas.**
-
-"""
-    + "\n###JSON schema:\n"
-    + json.dumps(bottleneck_response_schema, ensure_ascii=False)
-    + "\n###Audit Logs to Analyze:\n"
-)
-
-
-#deprecated
+# deprecated
 parsing_prompt = "dont give me anything aside from a json file which has the categories: name, city, contact number, email, educational background(with fields:degree,start_date,end_date,institution), soft skills, hard skills, work experience(with fields: title,company,start_date,end_date,description), and projects(with fields:name,start_date,end_date,description). parse this resume:"
 extra_transcript_prompt = (
     "dont give me anything but a json with 5 fields(sentimental_analysis, personality_traits, communication_style_insights, interview_insights, cultural_fit_insights)"
@@ -208,7 +226,7 @@ extra_transcript_prompt = (
     "Put them in their appropriate fields as mentioned above."
     "\nTranscript: "
 )  # used in transcribe.py
-#deprecated
+# deprecated
 scoring_prompt = (
     "output only a json with 6 fields: raw_score (from 1-5), reason (at least 100 words), phrases (each no more than 5 words), summary (no more than 20 words), predictive_success (1-100), and skill_gaps_recommendations. The raw_score field is the candidate's score based on how fit for the role he is and based on"
     " the resume, the transcript, and the other extra analyses. The reason is the reason justifying the raw_score."

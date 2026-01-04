@@ -1,10 +1,6 @@
 scoring_response_schema = {
     "type": "object",
     "properties": {
-        "raw_score": {
-            "type": "number",
-            "description": "The candidate's score indicating their fitness for the role, on a scale from 1 to 5. Must be a number. Do not include anything else for this field.",
-        },
         "reason": {
             "type": "string",
             "description": "A detailed justification for the raw_score, explaining the assessment based on the resume, transcript, and other analyses. Must be at least 100 words.",
@@ -24,7 +20,6 @@ scoring_response_schema = {
         },
     },
     "required": [
-        "raw_score",
         "reason",
         "predictive_success",
         "phrases",

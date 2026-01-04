@@ -1,63 +1,77 @@
-import asyncio
-import json
 import re
-import warnings
-from fastapi import APIRouter, HTTPException
-from typing import Any
-from typing import List
-from scipy.sparse import csr_matrix
-from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-from app.dependencies import scoring_prompt, scoring_gemini_model
+import json
+import asyncio
+from fastapi import APIRouter, HTTPException, Query
+from sklearn.metrics.pairwise import cosine_similarity
 
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
+from app.dependencies import (
+    localized_scoring_prompt,
+    embedding_model,
+    core_values,
+    scoring_gemini_model,
+)
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
 
-# Scoring without Gemini
-# lets use this later nalang, first we try gemma's scoring
-def cosine_similarity_scoring(resume_skills: List[str], job_skills: List[str]):
+def flatten_resume(resume_json: dict) -> str:
     """
-    Deprecated: Use the GEMMA-based scoring pipeline instead.
-    This function will be removed in a future release.
+    Convert resume JSON into a plain text string for embedding.
+    Only includes soft_skills, hard_skills, work_experience, and projects.
     """
+    parts = []
 
-    warnings.warn(
-        "cosine_similarity_scoring is deprecated and will be removed in a future release. "
-        "Please use the GEMMA-based scoring pipeline (get_gemma_pipe) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
+    # Soft skills
+    if "soft_skills" in resume_json:
+        parts.append("Soft skills: " + ", ".join(resume_json["soft_skills"]))
 
-    corpus: list[str] = [" ".join(resume_skills), " ".join(job_skills)]
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix: csr_matrix = vectorizer.fit_transform(corpus)  # type: ignore
-    original_score = sk_cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
-    scaled_score = 1 + 4 * original_score
-    return scaled_score
+    # Hard skills
+    if "hard_skills" in resume_json:
+        parts.append("Hard skills: " + ", ".join(resume_json["hard_skills"]))
+
+    # Work experience
+    if "work_experience" in resume_json:
+        for exp in resume_json["work_experience"]:
+            title = exp.get("title", "")
+            company = exp.get("company", "")
+            parts.append(f"{title} at {company}")
+
+    # Projects
+    if "projects" in resume_json:
+        for proj in resume_json["projects"]:
+            name = proj.get("name", "")
+            desc = proj.get("description", "")
+            parts.append(f"Project {name}: {desc}")
+
+    return "\n".join(parts)
 
 
 # Convert ObjectId to string for JSON serialization from MongoDB
 def convert_objectid(obj):
     from bson import ObjectId
 
-    if obj is None:
-        return None
-    if isinstance(obj, ObjectId):
-        return str(obj)
-    elif isinstance(obj, dict):
-        return {k: convert_objectid(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_objectid(item) for item in obj]
+    match obj:
+        case None:
+            return None
+        case ObjectId():
+            return str(obj)
+        case dict():
+            return {k: convert_objectid(v) for k, v in obj.items()}
+        case list():
+            return [convert_objectid(item) for item in obj]
+
     return obj
 
 
 @router.post("/")
-async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
+async def score_candidate(
+    user_id: str = Query(..., description="User ID"),
+    job_id: str = Query(..., description="Job ID"),
+    applicant_id: str = Query(..., description="Applicant ID"),
+):
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data, transcribed, parsed_resume = await asyncio.gather(
@@ -102,28 +116,36 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             .execute(),
         )
 
+        requirements_response = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: get_supabase_admin_client()
+            .table("jl_requirements")
+            .select("requirement")
+            .eq("joblisting_id", job_id)
+            .execute(),
+        )
+
+        tag_list = [t["tags"]["name"] for t in tags.data]
+        tags_text = "Tags: " + ", ".join(tag_list)
+
+        # Requirements: extract the 'requirement' field
+        requirements_list = [r["requirement"] for r in requirements_response.data]
+        requirements_text = "Requirements: " + "; ".join(requirements_list)
+
         tags = [
-            tag["tags"]["name"]
+            str(tag["tags"]["name"])
             for tag in tags.data
             if "tags" in tag and "name" in tag["tags"]
         ]
 
-        raw_score = 0
-        if not parsed_resume:
-            parsed_resume = {"raw_output": "No parsed resume available"}
-        else:
-            raw_output = parsed_resume.get("raw_output", {})
-            user_skills = raw_output.get("hard_skills", []) + raw_output.get(
-                "soft_skills", []
-            )
-            raw_score = cosine_similarity_scoring(user_skills, tags)
-
         prompt = (
-            scoring_prompt
+            localized_scoring_prompt
             + "\n Job: "
             + str(job_listing_data.data.get("title", "No title found"))
             + "\nResume: "
             + str(parsed_resume.get("raw_output", "No resume data found"))
+            + "\nJob Tags: "
+            + ", ".join(tags)
             + "\nTranscript: "
             + str(
                 transcribed.get("transcription", {}).get(
@@ -157,13 +179,33 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
                 )
             )
         )
+        resume_json = parsed_resume["raw_output"]
+        resume_text = flatten_resume(resume_json)
+        resume_emb = embedding_model.encode(resume_text, normalize_embeddings=True)
+        transcription = transcribed["transcription"]
+        transcription_text = " ".join(str(v) for v in transcription.values())
+        transcription_emb = embedding_model.encode(
+            transcription_text, normalize_embeddings=True
+        )
+        job_emb = embedding_model.encode(
+            requirements_text + "\n" + tags_text, normalize_embeddings=True
+        )
+        cultural_fit_emb = embedding_model.encode(
+            core_values, normalize_embeddings=True
+        )
+
+        resume_score = cosine_similarity([resume_emb], [job_emb])[0][0]
+        transcription_score = cosine_similarity(
+            [transcription_emb], [cultural_fit_emb]
+        )[0][0]
+        overall_score = (resume_score * 0.7) + (transcription_score * 0.3)
 
         raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
         if raw_output.startswith("```json"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
         raw_output = json.loads(raw_output)
-        raw_output["raw_score"] = raw_score
+        raw_output["raw_score"] = float(round(float(overall_score) * 5, 2))
 
         inserted_id = await mongodb.insert_document(
             "scored_candidates",
@@ -186,8 +228,7 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
 
         result = await asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: get_supabase_admin_client()
-            .table("job_applicants")
+            lambda: supabase_client.table("job_applicants")
             .update({"score_id": str(inserted_id)})
             .eq("id", applicant_id)
             .execute(),
@@ -211,6 +252,7 @@ async def score_candidate(user_id: str, job_id: str, applicant_id: str) -> Any:
             .eq("id", applicant_id)
             .execute(),
         )
+        pass
 
         # surface a clear HTTP error
         raise HTTPException(status_code=500, detail=str(e))

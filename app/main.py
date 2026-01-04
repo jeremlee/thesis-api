@@ -8,7 +8,7 @@ from app.executor import _executor
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        await transcribe.get_gemma_pipe()
+        pass
     except Exception as e:
         raise RuntimeError("Failed to initialize GEMMA pipeline") from e
 
