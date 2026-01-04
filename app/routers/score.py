@@ -1,16 +1,21 @@
-import asyncio
-import json
 import re
+import json
+import asyncio
 from fastapi import APIRouter, HTTPException, Query
-from typing import Any
+from sklearn.metrics.pairwise import cosine_similarity
 
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.executor import _executor
-from app.dependencies import localized_scoring_prompt, scoring_gemini_model, embedding_model, core_values
-from sklearn.metrics.pairwise import cosine_similarity
+from app.dependencies import (
+    localized_scoring_prompt,
+    embedding_model,
+    core_values,
+    scoring_gemini_model,
+)
 
 router = APIRouter(prefix="/score", tags=["Score"])
+
 
 def flatten_resume(resume_json: dict) -> str:
     """
@@ -41,10 +46,7 @@ def flatten_resume(resume_json: dict) -> str:
             desc = proj.get("description", "")
             parts.append(f"Project {name}: {desc}")
 
-    
-
     return "\n".join(parts)
-
 
 
 # Convert ObjectId to string for JSON serialization from MongoDB
@@ -69,7 +71,7 @@ async def score_candidate(
     user_id: str = Query(..., description="User ID"),
     job_id: str = Query(..., description="Job ID"),
     applicant_id: str = Query(..., description="Applicant ID"),
-) -> Any:
+):
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data, transcribed, parsed_resume = await asyncio.gather(
@@ -182,75 +184,74 @@ async def score_candidate(
         resume_emb = embedding_model.encode(resume_text, normalize_embeddings=True)
         transcription = transcribed["transcription"]
         transcription_text = " ".join(str(v) for v in transcription.values())
-        transcription_emb = embedding_model.encode(transcription_text, normalize_embeddings=True)
-        job_emb = embedding_model.encode(requirements_text + "\n" + tags_text, normalize_embeddings=True)
-        cultural_fit_emb = embedding_model.encode(core_values, normalize_embeddings=True)
+        transcription_emb = embedding_model.encode(
+            transcription_text, normalize_embeddings=True
+        )
+        job_emb = embedding_model.encode(
+            requirements_text + "\n" + tags_text, normalize_embeddings=True
+        )
+        cultural_fit_emb = embedding_model.encode(
+            core_values, normalize_embeddings=True
+        )
+
         resume_score = cosine_similarity([resume_emb], [job_emb])[0][0]
-        transcription_score = cosine_similarity([transcription_emb], [cultural_fit_emb])[0][0]
+        transcription_score = cosine_similarity(
+            [transcription_emb], [cultural_fit_emb]
+        )[0][0]
         overall_score = (resume_score * 0.7) + (transcription_score * 0.3)
-        print(json.dumps(transcribed["transcription"],default=str))
+
+        raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
+        if raw_output.startswith("```json"):
+            raw_output = re.sub(r"```json|```", "", raw_output).strip()
+
+        raw_output = json.loads(raw_output)
+        raw_output["raw_score"] = float(round(float(overall_score) * 5, 2))
+
+        inserted_id = await mongodb.insert_document(
+            "scored_candidates",
+            {
+                "user_id": user_id,
+                "job_id": job_id,
+                "score_data": raw_output,
+            },
+        )
+
+        if not inserted_id:
+            await asyncio.get_running_loop().run_in_executor(
+                _executor,
+                lambda: supabase_client.table("job_applicants")
+                .delete()
+                .eq("id", applicant_id)
+                .execute(),
+            )
+            raise HTTPException(status_code=500, detail="Failed to insert score data")
+
+        result = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: supabase_client.table("job_applicants")
+            .update({"score_id": str(inserted_id)})
+            .eq("id", applicant_id)
+            .execute(),
+        )
+
+        if not result.data:
+            await mongodb.delete_document("scored_candidates", {"_id": inserted_id})
+            raise HTTPException(
+                status_code=500, detail="Failed to update job applicant"
+            )
 
         return {
-            "requirements": requirements_text,
-            "tags": tags_text,
-            "resume": resume_text,
-            "transcription": transcription_text,
-            "resume_score": float(resume_score),
-            "transcription_score": float(transcription_score),
-            "overall_score": float(overall_score),
+            "message": "Candidate scored successfully",
+            "score_data": convert_objectid(raw_output),
         }
-
-        # raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
-        # if raw_output.startswith("```json"):
-        #     raw_output = re.sub(r"```json|```", "", raw_output).strip()
-
-        # raw_output = json.loads(raw_output)
-
-        # inserted_id = await mongodb.insert_document(
-        #     "scored_candidates",
-        #     {
-        #         "user_id": user_id,
-        #         "job_id": job_id,
-        #         "score_data": raw_output,
-        #     },
-        # )
-
-        # if not inserted_id:
-        #     await asyncio.get_running_loop().run_in_executor(
-        #         _executor,
-        #         lambda: supabase_client.table("job_applicants")
-        #         .delete()
-        #         .eq("id", applicant_id)
-        #         .execute(),
-        #     )
-        #     raise HTTPException(status_code=500, detail="Failed to insert score data")
-
-        # result = await asyncio.get_running_loop().run_in_executor(
-        #     _executor,
-        #     lambda: supabase_client.table("job_applicants")
-        #     .update({"score_id": str(inserted_id)})
-        #     .eq("id", applicant_id)
-        #     .execute(),
-        # )
-
-        # if not result.data:
-        #     await mongodb.delete_document("scored_candidates", {"_id": inserted_id})
-        #     raise HTTPException(
-        #         status_code=500, detail="Failed to update job applicant"
-        #     )
-
-        # return {
-        #     "message": "Candidate scored successfully",
-        #     "score_data": convert_objectid(raw_output),
-        # }
     except Exception as e:
-        # await asyncio.get_running_loop().run_in_executor(
-        #     _executor,
-        #     lambda: supabase_client.table("job_applicants")
-        #     .delete()
-        #     .eq("id", applicant_id)
-        #     .execute(),
-        # )
+        await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: supabase_client.table("job_applicants")
+            .delete()
+            .eq("id", applicant_id)
+            .execute(),
+        )
         pass
 
         # surface a clear HTTP error

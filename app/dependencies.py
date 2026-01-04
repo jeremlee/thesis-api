@@ -81,7 +81,7 @@ core_values = "quality, agility, integrity, exceeding customer expectations thro
 
 falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
-# gemini is deprecated
+
 parsing_gemini_model = GenerativeModel(
     model_name="gemini-2.5-flash-lite",
     generation_config={
