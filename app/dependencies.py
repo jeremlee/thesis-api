@@ -112,19 +112,29 @@ comparing_gemini_model = GenerativeModel(
     },
 )
 
-localized_parsing_prompt = (
-    """
-You are an expert resume parser. Your task is to extract all the key information from the resume provided below and format it into a single JSON object.
+localized_parsing_prompt = """
+You are an expert resume parser. Your task is to extract all key information from the resume below
+and format it into a single JSON object strictly following these fields:
 
-You must follow these rules strictly:
-1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
-2. **Do not add any additional fields or information not specified in the schema.**
-3. **If a field's information is not present in the resume, use `null` for that field's value.**
-4. **Adhere strictly to the JSON schema provided below.**"""
-    + "\n###JSON schema:\n"
-    + json.dumps(resume_response_schema, ensure_ascii=False)
-    + "\n###Resume Text to Parse: \n"
-)
+- name
+- city
+- contact_number
+- email
+- educational_background (list of degree, start_date, end_date, institution)
+- soft_skills (list of strings)
+- hard_skills (list of strings)
+- work_experience (list of title, company, start_date, end_date, description)
+- projects (list of name, start_date, end_date, description)
+
+Rules:
+1. Do not include any text before or after the JSON object.
+2. Use null for missing fields.
+3. Dates should be in YYYY-MM or YYYY format.
+4. Output a single valid JSON object starting with { and ending with }.
+
+Resume Text:
+"""
+
 
 localized_transcription_prompt = f"""
 You are an expert HR analyst and behavioral psychologist. Your task is to analyze the given text (such as a resume, personal statement, or writing sample) and extract deeper insights in JSON format.
