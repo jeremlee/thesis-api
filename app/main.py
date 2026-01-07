@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
-from app.routers import parseresume, transcribe, score, comparison
+from app.routers import parseresume, transcribe, score, comparison, chatbot
 from app.executor import _executor
 
 
@@ -22,6 +22,7 @@ app.include_router(transcribe.router)
 app.include_router(parseresume.router)
 app.include_router(score.router)
 app.include_router(comparison.router)
+app.include_router(chatbot.router)
 
 
 @app.get("/")

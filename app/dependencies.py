@@ -19,6 +19,7 @@ from app.response_schemas.resume_format import resume_response_schema
 from app.response_schemas.transcript_format import transcript_response_schema
 from app.response_schemas.score_format import scoring_response_schema
 from app.response_schemas.comparison_format import candidate_comparison_schema
+from app.response_schemas.chatbot_format import chatbot_schema
 from sentence_transformers import SentenceTransformer
 
 load_dotenv(".env.local")
@@ -58,6 +59,20 @@ async def get_gemma_pipe():
 model_path = "all-mpnet-base-v2"
 
 embedding_model = SentenceTransformer(model_path)
+
+documents_to_index = [
+    "Alliance Software, Inc. is a global IT services and solutions company. Alliance was established in 2000 and has since grown to become.",
+    "Alliance Software's vision is to be the premier Filipino global IT services and solutions company known for our advanced technology, mature yet evolving process, the highest level of quality delivery and our commitment to exceed customer expectations.",
+    "Alliance Software's mission is: we are committed to empower organizations and communities through innovative IT Solutions and Services.",
+    "Alliance Software's president is Mr. Robert J. Cheng.",
+    "Alliance Software Inc. has 505 employees as of March 2025.",
+    "Alliance Software's business domains are IT services and IT solutions.",
+    "Alliance Software has three offices: one in Cebu (established in April 2000), one in Manila (established in April 2002), and one in Tokyo (established in April 2006).",
+    "Alliance Software Inc. is located in 14th Floor, Buildcomm Center, Sumilon Road, Cebu Business Park, Cebu City 6000, PH",
+    "Alliance Software's core values are quality, agility, integrity, exceeding customer expectations through innovation, and efficiency",
+    "Candidates are scored using AI by analyzing their resumes and self-introduction videos.",
+    "Candidates are able to apply for jobs listed within the list.",
+]
 
 
 def extract_json_text(s: str) -> str | None:
@@ -189,6 +204,28 @@ Adhere strictly to the JSON schema below.
     + json.dumps(scoring_response_schema, ensure_ascii=False)
     + "\n### Text to Analyze:\n"
 )
+
+chatbot_prompt = (
+    """
+You are a knowledgeable and precise chatbot assistant. Your task is to answer the user's question using ONLY the provided retrieved context.
+Respond only with a valid JSON object. Ignore any extra text you want to include.
+
+You must follow these rules strictly:
+1. **Do not include any text before or after the JSON object.** The response must start with `{` and end with `}`.
+2. **Do not add any additional fields or keys not specified in the schema.**
+3. **If the answer cannot be found in the provided context, respond with a concise, honest reply indicating that the information is not available.**
+4. **Adhere strictly to the JSON schema provided below.**
+5. **The value of `reply` must be between 5 and 100 words.**
+
+"""
+    + "\n### JSON Schema:\n"
+    + json.dumps(chatbot_schema, ensure_ascii=False)
+    + "\n\n### Retrieved Context:\n"
+    + "{context}"
+    + "\n\n### User Question:\n"
+    + "{question}\n"
+)
+
 
 
 localized_comparison_prompt = (
