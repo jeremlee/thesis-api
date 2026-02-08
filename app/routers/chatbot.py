@@ -4,12 +4,14 @@ from typing import Any
 import numpy as np
 import faiss
 import json
+import re
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from app.dependencies import (
     get_gemma_pipe,
     GEMMA_SEMAPHORE,
     chatbot_prompt,
+    chatbot_gemini_model,
     embedding_model,
     documents_to_index,
     extract_json_text,
@@ -44,25 +46,45 @@ async def use_chatbot(request: ChatRequest):
     user_input = request.user_input
     try:
       
-        context = retrieve_context(user_input, k=3)[:1500]
-        prompt = chatbot_prompt.format(context=context, question=user_input)
-        gemma_pipe = await get_gemma_pipe()
-        async with GEMMA_SEMAPHORE:
-            loop = asyncio.get_running_loop()
-            raw_output = await loop.run_in_executor(
-                _executor,
-                lambda: gemma_pipe(
-                    prompt,
-                    max_new_tokens=900,
-                    return_full_text=True
-                )
-            )
-        print(raw_output)
+        # context = retrieve_context(user_input, k=3)[:1500]
+        # prompt = chatbot_prompt.format(context=context, question=user_input)
+        # gemma_pipe = await get_gemma_pipe()
+        # async with GEMMA_SEMAPHORE:
+        #     loop = asyncio.get_running_loop()
+        #     raw_output = await loop.run_in_executor(
+        #         _executor,
+        #         lambda: gemma_pipe(
+        #             prompt,
+        #             max_new_tokens=900,
+        #             return_full_text=True
+        #         )
+        #     )
+        # print(raw_output)
 
+        # return {
+        #     "message": "Chatbot executed successfully",
+        #     "rag_context": context,
+        #     "gemma_output": raw_output
+        # }
+
+        raw_output = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: chatbot_gemini_model.generate_content(
+                chatbot_prompt + "\n" + user_input
+            ).text.strip(),
+        )
+        if raw_output.startswith("```json"):
+            raw_output = re.sub(r"```json|```", "", raw_output).strip()
+
+        try:
+            parsed = json.loads(raw_output)
+            reply = parsed.get("reply", "")
+        except json.JSONDecodeError:
+            reply = ""
+        
         return {
-            "message": "Chatbot executed successfully",
-            "rag_context": context,
-            "gemma_output": raw_output
+            "message": "Chatbot successfully replied",
+            "reply": reply,   
         }
 
     except Exception as e:

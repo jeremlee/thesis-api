@@ -119,7 +119,9 @@ scoring_gemini_model = GenerativeModel(
         "response_schema": scoring_response_schema,
     },
 )
+
 transcription_model: Whisper = whisper.load_model("base")
+
 comparing_gemini_model = GenerativeModel(
     model_name="gemini-2.5-flash-lite",
     generation_config={
@@ -127,6 +129,15 @@ comparing_gemini_model = GenerativeModel(
         "response_schema": candidate_comparison_schema,
     },
 )
+
+chatbot_gemini_model = GenerativeModel(
+    model_name="gemini-2.5-flash-lite",
+    generation_config={
+        "response_mime_type": "application/json",
+        "response_schema": chatbot_schema,
+    },
+)
+
 
 localized_parsing_prompt = (
     """
