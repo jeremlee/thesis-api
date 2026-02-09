@@ -17,6 +17,7 @@ from app.dependencies import (
     extract_json_text,
 )
 from app.executor import _executor
+import supabase
 
 
 
@@ -41,11 +42,33 @@ def retrieve_context(query: str, k: int = 3) -> str:
 
     return "\n".join(retrieved_docs)
 
-@router.post("/")
-async def use_chatbot(request: ChatRequest):
+
+
+def get_last_messages(conversation_id: str, limit: int = 5) -> str:
+    resp = (
+        supabase
+        .table("conversation_messages")
+        .select("message")
+        .eq("conversation_id", conversation_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+
+    if resp.error:
+        return ""
+    messages = [row["message"] for row in reversed(resp.data)]
+
+    return "\n".join(messages)
+
+    
+
+@router.post("/{conversation_id}")
+async def use_chatbot(conversation_id: str, request: ChatRequest):
     user_input = request.user_input
+
     try:
-      
+
         # context = retrieve_context(user_input, k=3)[:1500]
         # prompt = chatbot_prompt.format(context=context, question=user_input)
         # gemma_pipe = await get_gemma_pipe()
@@ -66,25 +89,47 @@ async def use_chatbot(request: ChatRequest):
         #     "rag_context": context,
         #     "gemma_output": raw_output
         # }
+       
+       
+        history = get_last_messages(conversation_id)
+
+        prompt = (
+            chatbot_prompt
+            + "\n\nConversation so far:\n"
+            + history
+            + "\n\nUser:\n"
+            + user_input
+        )
 
         raw_output = await asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: chatbot_gemini_model.generate_content(
-                chatbot_prompt + "\n" + user_input
-            ).text.strip(),
+            lambda: chatbot_gemini_model.generate_content(prompt).text or "",
         )
-        if raw_output.startswith("```json"):
+
+        raw_output = raw_output.strip()
+
+        if raw_output.startswith("```"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
         try:
             parsed = json.loads(raw_output)
             reply = parsed.get("reply", "")
         except json.JSONDecodeError:
-            reply = ""
-        
+            reply = raw_output
+
+        supabase.rpc(
+            "add_message_and_keep_5",
+            {"p_conversation_id": conversation_id, "p_message": f"User: {user_input}"},
+        ).execute()
+
+        supabase.rpc(
+            "add_message_and_keep_5",
+            {"p_conversation_id": conversation_id, "p_message": f"Assistant: {reply}"},
+        ).execute()
+
         return {
             "message": "Chatbot successfully replied",
-            "reply": reply,   
+            "reply": reply,
         }
 
     except Exception as e:
