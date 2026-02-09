@@ -134,3 +134,16 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/conversations")
+def create_conversation():
+    resp = supabase.table("conversation_messages").insert({}).execute()
+
+    if resp.error:
+        raise HTTPException(status_code=400, detail=str(resp.error))
+
+    return {
+        "conversation_id": resp.data[0]["id"],
+        "message": "Conversation created",
+    }
