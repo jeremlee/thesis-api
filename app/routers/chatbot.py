@@ -18,7 +18,8 @@ from app.dependencies import (
 )
 from app.executor import _executor
 import supabase
-
+from app.services.supabase_service import get_supabase_admin_client
+from uuid import uuid4
 
 
 class ChatRequest(BaseModel):
@@ -28,6 +29,8 @@ index = faiss.read_index(FAISS_PATH)
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
 
 
+def format_history(messages: list[dict]) -> str:
+    return "\n".join(m["message"] for m in messages)
 
 
 def retrieve_context(query: str, k: int = 3) -> str:
@@ -43,30 +46,32 @@ def retrieve_context(query: str, k: int = 3) -> str:
     return "\n".join(retrieved_docs)
 
 
-
-def get_last_messages(conversation_id: str, limit: int = 5) -> str:
-    resp = (
-        supabase
-        .table("conversation_messages")
-        .select("message")
-        .eq("conversation_id", conversation_id)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
+@router.get("/messages/{conversation_id}")
+async def get_conversation_messages(conversation_id: str):
+    supabase_client = get_supabase_admin_client()
+    resp = await asyncio.get_running_loop().run_in_executor(
+        _executor,
+        lambda: supabase_client.table("conversation_messages")
+            .select("role, message, created_at")
+            .eq("conversation_id", conversation_id)
+            .order("created_at")  
+            .execute()
     )
 
-    if resp.error:
-        return ""
-    messages = [row["message"] for row in reversed(resp.data)]
+    if resp.data is None:
+        raise HTTPException(status_code=500, detail="Supabase query failed")
 
-    return "\n".join(messages)
+    return {
+        "conversation_id": conversation_id,
+        "messages": resp.data,
+    }
 
     
 
-@router.post("/{conversation_id}")
-async def use_chatbot(conversation_id: str, request: ChatRequest):
+@router.post("/use/{conversation_id}")
+async def use_chatbot(conversation_id: str, request: ChatRequest): 
     user_input = request.user_input
-
+    supabase_client = get_supabase_admin_client()
     try:
 
         # context = retrieve_context(user_input, k=3)[:1500]
@@ -89,14 +94,16 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
         #     "rag_context": context,
         #     "gemma_output": raw_output
         # }
-       
-       
-        history = get_last_messages(conversation_id)
+        history = await get_conversation_messages(conversation_id)
+        messages = history["messages"]
+        last_5 = messages[-5:]
+
+        history_text = format_history(last_5)
 
         prompt = (
             chatbot_prompt
             + "\n\nConversation so far:\n"
-            + history
+            + history_text
             + "\n\nUser:\n"
             + user_input
         )
@@ -117,15 +124,30 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
         except json.JSONDecodeError:
             reply = raw_output
 
-        supabase.rpc(
-            "add_message_and_keep_5",
-            {"p_conversation_id": conversation_id, "p_message": f"User: {user_input}"},
-        ).execute()
+        resp_user = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: supabase_client.table("conversation_messages").insert({
+                "conversation_id": conversation_id,
+                "role": "user",
+                "message": user_input,
+            }).execute()
+        )
 
-        supabase.rpc(
-            "add_message_and_keep_5",
-            {"p_conversation_id": conversation_id, "p_message": f"Assistant: {reply}"},
-        ).execute()
+        if resp_user.data is None:
+            raise HTTPException(status_code=500, detail="Insert failed")
+
+        resp_assistant = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: supabase_client.table("conversation_messages").insert({
+                "conversation_id": conversation_id,
+                "role": "assistant",
+                "message": reply,
+            }).execute()
+        )
+
+        if resp_assistant.data is None:
+            raise HTTPException(status_code=500, detail="Insert failed")
+    
 
         return {
             "message": "Chatbot successfully replied",
@@ -136,14 +158,11 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/conversations")
+@router.post("/new_conv")
 def create_conversation():
-    resp = supabase.table("conversation_messages").insert({}).execute()
-
-    if resp.error:
-        raise HTTPException(status_code=400, detail=str(resp.error))
+    conversation_id = str(uuid4())
 
     return {
-        "conversation_id": resp.data[0]["id"],
+        "conversation_id": conversation_id,
         "message": "Conversation created",
     }
