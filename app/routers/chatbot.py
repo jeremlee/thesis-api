@@ -49,7 +49,7 @@ async def get_conversation_messages(conversation_id: str):
         _executor,
         lambda: (
             supabase_client.table("conversation_messages")
-            .select("role, message, created_at")
+            .select("id, role, message, created_at")
             .eq("conversation_id", conversation_id)
             .order("created_at")
             .execute()
@@ -172,4 +172,27 @@ def create_conversation():
     return {
         "conversation_id": conversation_id,
         "message": "Conversation created",
+    }
+
+
+@router.delete("/delete/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    supabase_client = get_supabase_admin_client()
+
+    resp = await asyncio.get_running_loop().run_in_executor(
+        _executor,
+        lambda: (
+            supabase_client.table("conversation_messages")
+            .delete()
+            .eq("conversation_id", conversation_id)
+            .execute()
+        ),
+    )
+
+    if resp.data is None:
+        raise HTTPException(status_code=500, detail="Supabase delete failed")
+
+    return {
+        "conversation_id": conversation_id,
+        "message": "Conversation deleted",
     }
