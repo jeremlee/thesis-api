@@ -17,7 +17,8 @@ router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 
 
 def extract_json(text: str) -> dict:
-    import re, json
+    import re
+    import json
 
     text = text.replace("```json", "").replace("```", "")
     text = text.replace("“", '"').replace("”", '"')
@@ -97,11 +98,13 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
 
         result = await asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: get_supabase_admin_client()
-            .table("users")
-            .update({"parsed_resume_id": str(inserted_id)})
-            .eq("id", applicant_id)
-            .execute(),
+            lambda: (
+                get_supabase_admin_client()
+                .table("users")
+                .update({"parsed_resume_id": str(inserted_id)})
+                .eq("id", applicant_id)
+                .execute()
+            ),
         )
 
         if not result.data:
@@ -122,10 +125,12 @@ async def delete_parsed_resume(applicant_id: str):
         mongodb.delete_document("parsed_resume", {"user_id": applicant_id}),
         asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: get_supabase_admin_client()
-            .table("users")
-            .update({"parsed_resume_id": None})
-            .eq("id", applicant_id)
-            .execute(),
+            lambda: (
+                get_supabase_admin_client()
+                .table("users")
+                .update({"parsed_resume_id": None})
+                .eq("id", applicant_id)
+                .execute()
+            ),
         ),
     )

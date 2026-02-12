@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     mongodb_uri: str = ""
     database_name: str = ""
 
-    debug: bool = False
+    debug: bool = True
 
     model_config = {"env_file": ".env.local"}
 

@@ -1,31 +1,28 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
-from typing import Any
 import numpy as np
-import faiss
+
+# import faiss
 import json
 import re
-from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from app.dependencies import (
-    get_gemma_pipe,
-    GEMMA_SEMAPHORE,
     chatbot_prompt,
     chatbot_gemini_model,
     embedding_model,
-    documents_to_index,
-    extract_json_text,
+    # documents_to_index,
 )
 from app.executor import _executor
-import supabase
 from app.services.supabase_service import get_supabase_admin_client
 from uuid import uuid4
 
 
 class ChatRequest(BaseModel):
     user_input: str
+
+
 FAISS_PATH = "D:/Documents/A_College/alliance thesis/ai_api/rag.faiss"
-index = faiss.read_index(FAISS_PATH)
+# index = faiss.read_index(FAISS_PATH)
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
 
 
@@ -37,13 +34,12 @@ def retrieve_context(query: str, k: int = 3) -> str:
     query_embedding = embedding_model.encode([query])
     query_embedding = np.array(query_embedding).astype("float32")
 
-    distances, indices = index.search(query_embedding, k)
+    # _, indices = index.search(query_embedding, k)
 
-    retrieved_docs = [
-        documents_to_index[i] for i in indices[0] if i != -1
-    ]
+    # retrieved_docs = [documents_to_index[i] for i in indices[0] if i != -1]
 
-    return "\n".join(retrieved_docs)
+    # return "\n".join(retrieved_docs)
+    return ""
 
 
 @router.get("/messages/{conversation_id}")
@@ -51,11 +47,13 @@ async def get_conversation_messages(conversation_id: str):
     supabase_client = get_supabase_admin_client()
     resp = await asyncio.get_running_loop().run_in_executor(
         _executor,
-        lambda: supabase_client.table("conversation_messages")
+        lambda: (
+            supabase_client.table("conversation_messages")
             .select("role, message, created_at")
             .eq("conversation_id", conversation_id)
-            .order("created_at")  
+            .order("created_at")
             .execute()
+        ),
     )
 
     if resp.data is None:
@@ -66,14 +64,12 @@ async def get_conversation_messages(conversation_id: str):
         "messages": resp.data,
     }
 
-    
 
 @router.post("/use/{conversation_id}")
-async def use_chatbot(conversation_id: str, request: ChatRequest): 
+async def use_chatbot(conversation_id: str, request: ChatRequest):
     user_input = request.user_input
     supabase_client = get_supabase_admin_client()
     try:
-
         # context = retrieve_context(user_input, k=3)[:1500]
         # prompt = chatbot_prompt.format(context=context, question=user_input)
         # gemma_pipe = await get_gemma_pipe()
@@ -126,11 +122,17 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
 
         resp_user = await asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: supabase_client.table("conversation_messages").insert({
-                "conversation_id": conversation_id,
-                "role": "user",
-                "message": user_input,
-            }).execute()
+            lambda: (
+                supabase_client.table("conversation_messages")
+                .insert(
+                    {
+                        "conversation_id": conversation_id,
+                        "role": "user",
+                        "message": user_input,
+                    }
+                )
+                .execute()
+            ),
         )
 
         if resp_user.data is None:
@@ -138,16 +140,21 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
 
         resp_assistant = await asyncio.get_running_loop().run_in_executor(
             _executor,
-            lambda: supabase_client.table("conversation_messages").insert({
-                "conversation_id": conversation_id,
-                "role": "assistant",
-                "message": reply,
-            }).execute()
+            lambda: (
+                supabase_client.table("conversation_messages")
+                .insert(
+                    {
+                        "conversation_id": conversation_id,
+                        "role": "assistant",
+                        "message": reply,
+                    }
+                )
+                .execute()
+            ),
         )
 
         if resp_assistant.data is None:
             raise HTTPException(status_code=500, detail="Insert failed")
-    
 
         return {
             "message": "Chatbot successfully replied",
