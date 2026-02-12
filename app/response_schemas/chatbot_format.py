@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 chatbot_schema = {
     "type": "object",
     "properties": {
@@ -8,3 +10,11 @@ chatbot_schema = {
     },
     "required": ["reply"],
 }
+
+
+class ConversationDeleteResponse(BaseModel):
+    conversation_id: str
+    message: str
+
+class ChatRequest(BaseModel):
+    user_input: str

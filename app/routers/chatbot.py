@@ -5,7 +5,8 @@ import numpy as np
 # import faiss
 import json
 import re
-from pydantic import BaseModel
+from uuid import uuid4
+
 from app.dependencies import (
     chatbot_prompt,
     chatbot_gemini_model,
@@ -14,11 +15,7 @@ from app.dependencies import (
 )
 from app.executor import _executor
 from app.services.supabase_service import get_supabase_admin_client
-from uuid import uuid4
-
-
-class ChatRequest(BaseModel):
-    user_input: str
+from app.response_schemas.chatbot_format import ConversationDeleteResponse, ChatRequest
 
 
 FAISS_PATH = "D:/Documents/A_College/alliance thesis/ai_api/rag.faiss"
@@ -176,7 +173,7 @@ def create_conversation():
 
 
 @router.delete("/delete/{conversation_id}")
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(conversation_id: str) -> ConversationDeleteResponse:
     supabase_client = get_supabase_admin_client()
 
     resp = await asyncio.get_running_loop().run_in_executor(
@@ -192,7 +189,7 @@ async def delete_conversation(conversation_id: str):
     if resp.data is None:
         raise HTTPException(status_code=500, detail="Supabase delete failed")
 
-    return {
-        "conversation_id": conversation_id,
-        "message": "Conversation deleted",
-    }
+    return ConversationDeleteResponse(
+        conversation_id=conversation_id,
+        message="Conversation deleted",
+    )
