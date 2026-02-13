@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 chatbot_schema = {
     "type": "object",
@@ -35,3 +35,15 @@ class GetConversationMessagesResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     user_input: str
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+class GuestChatRequest(BaseModel):
+    message: str
+    history: list[Message] = Field(default_factory=list)
+
+class GuestUseChatBotResponse(BaseModel):
+    message: str
+    reply: str

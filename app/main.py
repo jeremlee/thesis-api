@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import parseresume, transcribe, score, comparison, chatbot
 from app.executor import _executor
+import uvicorn
 
 
 @asynccontextmanager
@@ -45,3 +46,7 @@ def health_check() -> dict[str, str]:
         return {"status": "ok", "message": "API is running smoothly."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000)
+
