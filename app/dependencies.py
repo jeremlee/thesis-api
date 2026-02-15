@@ -92,8 +92,64 @@ def extract_json_text(s: str) -> str | None:
             start = s.find("{", start + 1)
     return None
 
+core_values = (
+    # QUALITY + Attention to Detail
+    "Quality and Excellence: A commitment to high standards, precision, and craftsmanship. "
+    "Demonstrates meticulous attention to detail, thoroughness in work, and a drive to "
+    "deliver error-free, polished results. "
+    # AGILITY + Adaptability
+    "Agility and Adaptability: The ability to pivot quickly and maintain performance in "
+    "fast-paced, high-pressure, or ambiguous environments. A fast learner who embraces "
+    "change and remains flexible when priorities shift. "
+    # INTEGRITY + Accountability
+    "Integrity and Accountability: Operating with ethical honesty, transparency, and "
+    "strong moral principles. Taking full ownership of individual outcomes, admitting "
+    "mistakes, and following through on all commitments and responsibilities. "
+    # INNOVATION + Problem Solving
+    "Innovation and Exceeding Expectations: A proactive growth mindset driven by "
+    "curiosity, creative problem-solving, and resourcefulness. Consistently seeks "
+    "to improve the status quo and provide value beyond the basic requirements. "
+    # EFFICIENCY + Self-Management
+    "Efficiency and Productivity: Exceptional time management, organizational skills, "
+    "and a results-oriented focus. Capable of optimizing workflows, prioritizing "
+    "effectively, and managing resources to hit deadlines without sacrificing quality. "
+    # INTERPERSONAL + Soft Skills
+    "Interpersonal Intelligence and Collaboration: Strong communication skills, "
+    "active listening, and empathy. A team player who fosters synergy, manages "
+    "conflicts constructively, and supports the growth of others through mentorship."
+)
 
-core_values = "quality, agility, integrity, exceeding customer expectations through innovation, efficiency"  # use for cultural fit
+soft_skills_baseline = (
+    # COMMUNICATION
+    "Effective Communication: The ability to articulate ideas clearly and concisely. "
+    "Expertise in active listening, stakeholder management, and tailoring "
+    "complex information for different audiences. "
+    
+    # EMOTIONAL INTELLIGENCE
+    "Emotional Intelligence (EQ): High self-awareness and social awareness. "
+    "Demonstrates empathy, manages personal triggers, and reads social cues "
+    "effectively to build trust and maintain positive relationships. "
+    
+    # CRITICAL THINKING
+    "Critical Thinking and Reasoning: Logical approach to decision-making. "
+    "Capable of analyzing data, identifying biases, and connecting dots between "
+    "disparate pieces of information to reach a sound conclusion. "
+    
+    # CONFLICT RESOLUTION
+    "Conflict Management: Navigating disagreements with diplomacy. "
+    "Focused on win-win solutions, de-escalating tension, and maintaining "
+    "professionalism during difficult conversations or high-stress periods. "
+    
+    # LEADERSHIP & INFLUENCE
+    "Influence and Leadership: Even without a formal title, the ability to "
+    "motivate others, delegate tasks effectively, and drive consensus "
+    "around shared goals. "
+    
+    # RESILIENCE & GRIT
+    "Mental Resilience: Maintaining a positive and productive attitude in the "
+    "face of rejection, failure, or heavy workloads. Shows persistence and "
+    "emotional stability under pressure."
+)
 
 falcon_path = "falcon-3b-instruct"
 gemma_path = "gemma-3-1b-it"
@@ -181,7 +237,6 @@ ABSOLUTE RULES (NON-NEGOTIABLE):
 2. Output MUST start with `{` and end with `}`.
 3. Output MUST contain ONLY the JSON object — no explanations, no labels, no markdown, no backticks.
 4. Use ONLY double quotes (`"`). Single quotes (`'`) are forbidden.
-5. Do NOT include percent signs, words, or symbols in numeric fields.
 6. Do NOT include field names as headings (e.g., "Predictive Success:").
 7. Do NOT include comments, trailing commas, or extra whitespace outside the JSON object.
 
@@ -190,24 +245,14 @@ SCHEMA COMPLIANCE RULES:
 2. ALL fields in the schema are required.
 3. If information is missing or cannot be inferred, set the value to null.
 4. Follow field constraints exactly:
-   - "raw_score": number between 1 and 5 (number only)
-   - "predictive_success": integer between 1 and 100 (number only)
    - "reason": at least 100 words
    - "phrases": array of short phrases, each no more than 5 words summarizing the reason
    - "skill_gaps_recommendations": no more than 50 words
 
 FIELD CONSTRAINTS (MANDATORY):
-- `raw_score`: number between 1 and 5 ONLY (no text, no symbols)
 - `reason`: at least 100 words
-- `predictive_success`: integer between 1 and 100 ONLY
 - `phrases`: array of short phrases, each no more than 5 words
 - `skill_gaps_recommendations`: at most 50 words
-
-INVALID OUTPUT (DO NOT DO THIS):
-{'raw_score': 4}
-
-VALID OUTPUT FORMAT:
-{"raw_score": 4}
 
 Adhere strictly to the JSON schema below.
 """

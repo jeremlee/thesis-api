@@ -12,42 +12,92 @@ from app.dependencies import (
     embedding_model,
     core_values,
     scoring_gemini_model,
+    soft_skills_baseline,
 )
 from app.response_schemas.score_format import ScoreCandidateResponse
-
+from pydantic import BaseModel
 router = APIRouter(prefix="/score", tags=["Score"])
 
 
-def flatten_resume(resume_json: dict) -> str:
-    """
-    Convert resume JSON into a plain text string for embedding.
-    Only includes soft_skills, hard_skills, work_experience, and projects.
-    """
-    parts = []
+class JobFitData(BaseModel):
+    hard_skills: str
+    work_experiences: str
+    projects: str
+class PredictiveSuccessData(BaseModel):
+    soft_skills: str
+    transcription: str
 
-    # Soft skills
-    if "soft_skills" in resume_json:
-        parts.append("Soft skills: " + ", ".join(resume_json["soft_skills"]))
-
-    # Hard skills
+def get_jobfitdata(resume_json: dict) -> JobFitData:
+    
+    hard_skills = ""
     if "hard_skills" in resume_json:
-        parts.append("Hard skills: " + ", ".join(resume_json["hard_skills"]))
+        hard_skills = "Technical Competencies: " + ", ".join(resume_json["hard_skills"])
 
-    # Work experience
+    work_experiences = ""
     if "work_experience" in resume_json:
-        for exp in resume_json["work_experience"]:
-            title = exp.get("title", "")
-            company = exp.get("company", "")
-            parts.append(f"{title} at {company}")
+        exp_parts = [
+            f"Role: {e.get('title')} at {e.get('company')}. Responsibilities and Tech: {e.get('description', '')}"
+            for e in resume_json["work_experience"]
+        ]
+        work_experiences = "\n".join(exp_parts)
 
-    # Projects
+    projects = ""
     if "projects" in resume_json:
-        for proj in resume_json["projects"]:
-            name = proj.get("name", "")
-            desc = proj.get("description", "")
-            parts.append(f"Project {name}: {desc}")
+        proj_parts = [
+            f"Project: {p.get('name')}. Details: {p.get('description', '')}"
+            for p in resume_json["projects"]
+        ]
+        projects = "\n".join(proj_parts)
 
-    return "\n".join(parts)
+    return JobFitData(
+        hard_skills=hard_skills,
+        work_experiences=work_experiences,
+        projects=projects
+    )
+
+
+def get_predictivesuccessdata(resume_json: dict, transcription_data: str) -> PredictiveSuccessData:
+    soft_skills = ""
+    if "soft_skills" in resume_json:
+        soft_skills = "Behavioral Competencies: " + ", ".join(resume_json["soft_skills"])
+
+    return PredictiveSuccessData(
+        soft_skills=soft_skills,
+        transcription=transcription_data
+    )
+
+
+
+# def flatten_resume(resume_json: dict) -> str:
+#     """
+#     Convert resume JSON into a plain text string for embedding.
+#     Only includes soft_skills, hard_skills, work_experience, and projects.
+#     """
+#     parts = []
+
+#     # Soft skills
+#     if "soft_skills" in resume_json:
+#         parts.append("Soft skills: " + ", ".join(resume_json["soft_skills"]))
+
+#     # Hard skills
+#     if "hard_skills" in resume_json:
+#         parts.append("Hard skills: " + ", ".join(resume_json["hard_skills"]))
+
+#     # Work experience
+#     if "work_experience" in resume_json:
+#         for exp in resume_json["work_experience"]:
+#             title = exp.get("title", "")
+#             company = exp.get("company", "")
+#             parts.append(f"{title} at {company}")
+
+#     # Projects
+#     if "projects" in resume_json:
+#         for proj in resume_json["projects"]:
+#             name = proj.get("name", "")
+#             desc = proj.get("description", "")
+#             parts.append(f"Project {name}: {desc}")
+
+#     return "\n".join(parts)
 
 
 # Convert ObjectId to string for JSON serialization from MongoDB
@@ -138,7 +188,104 @@ async def score_candidate(
             for tag in tags.data
             if "tags" in tag and "name" in tag["tags"]
         ]
+        if not parsed_resume:
+            raise HTTPException(status_code=404, detail="Parsed resume not found for this user")
+        resume_json = parsed_resume["raw_output"]
+        transcription = transcribed["transcription"]
+        # format transcription data
+        transcription_text = " ".join(str(v) for v in transcription.values())
+        jobfitdata: JobFitData = get_jobfitdata(resume_json)
+        predictivesuccessdata: PredictiveSuccessData = get_predictivesuccessdata(resume_json, transcription_text)
+        # converts hard skills, work experiences, projects to numerical vector
+        jobfit_text = (
+            f"TECHNICAL SKILLS:\n{jobfitdata.hard_skills}\n\n"
+            f"PROFESSIONAL EXPERIENCE:\n{jobfitdata.work_experiences}\n\n"
+            f"TECHNICAL PROJECTS:\n{jobfitdata.projects}"
+        )
+        jobfit_emb = embedding_model.encode(jobfit_text, normalize_embeddings=True)
 
+        # converts soft skills to numerical vector
+        softskills_text = (
+            f"SOFT SKILLS:\n{predictivesuccessdata.soft_skills}\n\n"
+        )
+        softskills_emb = embedding_model.encode(softskills_text, normalize_embeddings=True)
+        #converts transcription to numerical vector
+        transcription_text = (
+            f"TRANSCRIPTION:\n{predictivesuccessdata.transcription}\n\n"
+        )
+        transcription_emb = embedding_model.encode(transcription_text, normalize_embeddings=True)
+        # converts job requirements text and tags to numerical vector
+        job_emb = embedding_model.encode(
+            requirements_text + "\n" + tags_text, normalize_embeddings=True
+        )
+        # converts the company's core values to numerical vector
+        cultural_fit_emb = embedding_model.encode(
+            core_values, normalize_embeddings=True
+        )
+        soft_skills_baseline_emb = embedding_model.encode(
+            soft_skills_baseline, normalize_embeddings=True
+        )
+        # THE NUMERICAL VECTORS WILL BE USED TO COMPUTE THE SCORES THROUGH COSINE SIMILARITY
+
+        # computes the cosine similarity between the jobfitdata (hard skills, work experiences and projects) and the job requirements 
+
+        # take note that job_fit_score was previously referred to as raw_score
+
+        job_fit_score = cosine_similarity([jobfit_emb], [job_emb])[0][0]
+
+        # computes the cosine similarity between the soft skills and the soft skills standard 
+
+        soft_skills_score = cosine_similarity([softskills_emb], [soft_skills_baseline_emb])[0][0]
+
+        # computes the cosine similarity between the transcription data and the soft skills standard 
+
+        transcription_score = cosine_similarity([transcription_emb], [soft_skills_baseline_emb])[0][0]
+
+        # computes the cosine similarity between the soft skills and the cultural fit
+
+        cultural_fit_score = cosine_similarity([softskills_emb], [cultural_fit_emb])[0][0]
+
+        # computes the cosine similarity between the transcription data and the cultural fit
+
+        transcription_cultural_fit_score = cosine_similarity([transcription_emb], [cultural_fit_emb])[0][0]
+
+        # 1. Calculate the Behavioral Blend (The "How they work" side)
+
+        # We prioritize the transcription (interview) over the resume list
+        behavioral_blend = (
+            (transcription_cultural_fit_score * 0.30) + 
+            (transcription_score * 0.25) + 
+            (cultural_fit_score * 0.15) + 
+            (soft_skills_score * 0.30)
+        )
+
+        # 2. Calculate Final Predictive Success (50% Job Fit + 50% Behavior)
+
+        # This results in a value between 0.0 and 1.0
+
+        predictive_success_raw = (job_fit_score * 0.40) + (behavioral_blend * 0.60)
+
+        # 3. Scaling for Human Readability
+
+        # Since MPNet scores rarely hit 1.0, we scale the result.
+
+        # A raw score of 0.80 should probably look like a 95% to a recruiter.
+
+        predictive_success_final_score = min(100, int((predictive_success_raw / 0.85) * 100))
+
+        # 4. Job Fit Score (1-5 Star Rating)
+
+        # Similarly, we scale 0.85 similarity to be a 5-star result. 0.85 is the perfect score
+        job_fit_final_score = min(100, int((job_fit_score / 0.85) * 100))
+        job_fit_stars = round(min(5.0, (job_fit_score / 0.85) * 5), 1)
+
+        """
+        scores are based from:
+        job fit score (previously raw_score) = hard skills from resume, work experiences, projects
+        predictive success = soft skills from resume, transcription, cultural fit
+        """
+
+        # PROMPT SECTION
         prompt = (
             localized_scoring_prompt
             + "\n Job: "
@@ -179,34 +326,22 @@ async def score_candidate(
                     "interview_insights", "No interview insights found"
                 )
             )
+            + "CALCULATED SCORES BY COSINE SIMILARITY: \n"
+            + f"JOB_FIT_SCORE = {job_fit_final_score}\n" 
+            + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
         )
-        resume_json = parsed_resume["raw_output"]
-        resume_text = flatten_resume(resume_json)
-        resume_emb = embedding_model.encode(resume_text, normalize_embeddings=True)
-        transcription = transcribed["transcription"]
-        transcription_text = " ".join(str(v) for v in transcription.values())
-        transcription_emb = embedding_model.encode(
-            transcription_text, normalize_embeddings=True
-        )
-        job_emb = embedding_model.encode(
-            requirements_text + "\n" + tags_text, normalize_embeddings=True
-        )
-        cultural_fit_emb = embedding_model.encode(
-            core_values, normalize_embeddings=True
-        )
-
-        resume_score = cosine_similarity([resume_emb], [job_emb])[0][0]
-        transcription_score = cosine_similarity(
-            [transcription_emb], [cultural_fit_emb]
-        )[0][0]
-        overall_score = (resume_score * 0.7) + (transcription_score * 0.3)
 
         raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
         if raw_output.startswith("```json"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
         raw_output = json.loads(raw_output)
-        raw_output["raw_score"] = float(round(float(overall_score) * 5, 2))
+
+        # adding the scores to the field
+        
+        raw_output["predictive_success"] = predictive_success_final_score
+        raw_output["job_fit_score"] = job_fit_final_score
+        raw_output["job_fit_stars"] = job_fit_stars
 
         inserted_id = await mongodb.insert_document(
             "scored_candidates",
