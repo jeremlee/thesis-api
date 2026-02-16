@@ -88,6 +88,10 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
         #     "gemma_output": raw_output
         # }
         history = await get_conversation_messages(conversation_id)
+
+        if history["messages"] is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
         messages = history["messages"]
         last_5 = messages[-5:]
 
@@ -163,8 +167,29 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
 
 
 @router.post("/new_conv")
-def create_conversation():
+async def create_conversation():
     conversation_id = str(uuid4())
+
+    respond = await asyncio.get_running_loop().run_in_executor(
+        _executor,
+        lambda: (
+            get_supabase_admin_client()
+            .table("conversation_messages")
+            .insert(
+                {
+                    "conversation_id": conversation_id,
+                    "role": "assistant",
+                    "message": "👋 Hi! I’m your AI assistant. Ask me about jobs, applications, or your profile.",
+                }
+            )
+            .execute()
+        ),
+    )
+
+    if respond.data is None:
+        raise HTTPException(
+            status_code=500, detail="Internal error creating conversation"
+        )
 
     return {
         "conversation_id": conversation_id,

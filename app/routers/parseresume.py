@@ -100,7 +100,7 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
             _executor,
             lambda: (
                 get_supabase_admin_client()
-                .table("users")
+                .table("applicants")
                 .update({"parsed_resume_id": str(inserted_id)})
                 .eq("id", applicant_id)
                 .execute()
