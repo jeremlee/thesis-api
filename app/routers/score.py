@@ -259,6 +259,13 @@ async def score_candidate(
             (soft_skills_score * 0.30)
         )
 
+        # normalizing values
+        # will be stored in raw_output 
+        soft_skills_score_pct = min(100, int((soft_skills_score / 0.85) * 100))
+        transcription_score_pct = min(100, int((transcription_score / 0.85) * 100))
+        cultural_fit_score_pct = min(100, int((cultural_fit_score / 0.85) * 100))
+        trans_cultural_fit_score_pct = min(100, int((transcription_cultural_fit_score / 0.85) * 100))
+
         # 2. Calculate Final Predictive Success (50% Job Fit + 50% Behavior)
 
         # This results in a value between 0.0 and 1.0
@@ -337,8 +344,14 @@ async def score_candidate(
 
         raw_output = json.loads(raw_output)
 
+        # use these for success likelihood "visualization"
+        raw_output["soft_skills_score"] = soft_skills_score_pct
+        raw_output["transcription_score"] = transcription_score_pct
+        raw_output["transcription_cultural_fit_score"] = trans_cultural_fit_score_pct
+        raw_output["cultural_fit_score"] = cultural_fit_score_pct
+
         # adding the scores to the field
-        
+        # final scores
         raw_output["predictive_success"] = predictive_success_final_score
         raw_output["job_fit_score"] = job_fit_final_score
         raw_output["job_fit_stars"] = job_fit_stars
