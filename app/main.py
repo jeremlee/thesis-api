@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import parseresume, transcribe, score, comparison, chatbot
+from app.routers import  score, comparison, chatbot
 from app.executor import _executor
 import uvicorn
 
@@ -28,8 +28,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(transcribe.router)
-app.include_router(parseresume.router)
 app.include_router(score.router)
 app.include_router(comparison.router)
 app.include_router(chatbot.router)

@@ -31,7 +31,7 @@ class UseChatBotResponse(BaseModel):
 
 class GetConversationMessagesResponse(BaseModel):
     conversation_id: str
-    messages: list[dict]
+    messages: list[ConversationMessage]
 
 class ChatRequest(BaseModel):
     user_input: str

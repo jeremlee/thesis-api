@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Dict, Any
 
 scoring_response_schema = {
     "type": "object",
@@ -26,4 +27,4 @@ scoring_response_schema = {
 
 class ScoreCandidateResponse(BaseModel):
     message: str
-    score_data: str
+    score_data: Dict[str, Any]
