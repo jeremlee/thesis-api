@@ -33,6 +33,9 @@ class GetConversationMessagesResponse(BaseModel):
     conversation_id: str
     messages: list[ConversationMessage]
 
+    def __getitem__(self, key):
+        return getattr(self, key)
+
 class ChatRequest(BaseModel):
     user_input: str
 

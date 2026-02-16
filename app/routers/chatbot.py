@@ -4,7 +4,6 @@ import numpy as np
 # import faiss
 import json
 import re
-from uuid import uuid4
 
 from app.dependencies import (
     chatbot_prompt,
@@ -14,15 +13,13 @@ from app.dependencies import (
 )
 from app.executor import _executor
 from app.services.supabase_service import get_supabase_admin_client
-from app.response_schemas.chatbot_format import (ConversationMessage, 
-                                                 ConversationDeleteResponse, 
-                                                 ChatRequest,
-                                                 CreateConversationResponse, 
-                                                 UseChatBotResponse, 
-                                                 GetConversationMessagesResponse, 
-                                                 GuestChatRequest, 
-                                                 Message,
-                                                 GuestUseChatBotResponse)
+from app.response_schemas.chatbot_format import (
+    ConversationMessage,
+    ChatRequest,
+    UseChatBotResponse,
+    Message,
+    GetConversationMessagesResponse,
+)
 
 
 FAISS_PATH = "D:/Documents/A_College/alliance thesis/ai_api/rag.faiss"
@@ -49,7 +46,6 @@ def retrieve_context(query: str, k: int = 3) -> str:
     return ""
 
 
-@router.get("/messages/{conversation_id}")
 async def get_conversation_messages(
     conversation_id: str,
 ) -> GetConversationMessagesResponse:
@@ -175,67 +171,3 @@ async def use_chatbot(conversation_id: str, request: ChatRequest) -> UseChatBotR
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/new_conv")
-def create_conversation() -> CreateConversationResponse:
-    conversation_id = str(uuid4())
-
-    return CreateConversationResponse(
-        conversation_id=conversation_id,
-        message="Conversation created",
-    )
-
-
-@router.delete("/delete/{conversation_id}")
-async def delete_conversation(conversation_id: str) -> ConversationDeleteResponse:
-    supabase_client = get_supabase_admin_client()
-
-    resp = await asyncio.get_running_loop().run_in_executor(
-        _executor,
-        lambda: (
-            supabase_client.table("conversation_messages")
-            .delete()
-            .eq("conversation_id", conversation_id)
-            .execute()
-        ),
-    )
-
-    if resp.data is None:
-        raise HTTPException(status_code=500, detail="Supabase delete failed")
-
-    return ConversationDeleteResponse(
-        conversation_id=conversation_id,
-        message="Conversation deleted",
-    )
-
-@router.post("/guest/use")
-async def guest_use_chatbot(request: GuestChatRequest) -> GuestUseChatBotResponse:
-    user_input = request.message
-    messages = request.history
-    last_5 = messages[-5:]
-    history_text = format_guest_history(last_5)
-    prompt = (
-        chatbot_prompt
-        + "\n\nConversation so far:\n"
-        + history_text
-        + "\n\nUser:\n"
-        + user_input
-    )
-    raw_output = await asyncio.get_running_loop().run_in_executor(
-        _executor,
-        lambda: chatbot_gemini_model.generate_content(prompt).text or "",
-    )
-    raw_output = raw_output.strip()
-    if raw_output.startswith("```"):
-        raw_output = re.sub(r"```json|```", "", raw_output).strip()
-    try:
-        parsed = json.loads(raw_output)
-        reply = parsed.get("reply", "")
-    except json.JSONDecodeError:
-        reply = raw_output  
-
-    return GuestUseChatBotResponse(
-        message="Chatbot for guest successfully replied",
-        reply=reply
-    )

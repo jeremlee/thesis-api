@@ -1,8 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import  score, comparison, chatbot
+from app.routers import  score, comparison, chatbot, accuracy_reports
 from app.executor import _executor
 import uvicorn
 
@@ -20,17 +19,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app.include_router(score.router)
 app.include_router(comparison.router)
 app.include_router(chatbot.router)
+app.include_router(accuracy_reports.router)
 
 
 @app.get("/")
