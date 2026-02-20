@@ -11,6 +11,10 @@ candidate_comparison_schema = {
             "type": "string",
             "description": "A clear and concise explanation describing why this candidate is better. Must be between 50 and 100 words.",
         },
+        "recommendations": {
+            "type": "string",
+            "description": "A clear and concise recommendation about the chosen candidate. Must be between 50 and 100 words.",
+        },
         "highlights": {
             "type": "array",
             "description": "An array of short key phrases summarizing the main reasons for choosing this candidate. Each phrase must be no more than 10 words.",
@@ -27,4 +31,5 @@ candidate_comparison_schema = {
 class CompareCandidatesResponse(BaseModel):
     better_candidate: str
     reason: str
+    recommendations: str
     highlights: list[str]
