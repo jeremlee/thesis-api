@@ -1,5 +1,4 @@
 import asyncio
-from typing import Any
 import json
 from fastapi import HTTPException, Query, APIRouter
 import re
@@ -57,19 +56,19 @@ async def compare_candidates(
         ) = await asyncio.gather(
             mongodb.find_document(
                 "scored_candidates",
-                {"user_id": applicant1_id, "job_id": job_id},
+                {"applicant_id": applicant1_id, "job_id": job_id},
             ),
             mongodb.find_document(
                 "scored_candidates",
-                {"user_id": applicant2_id, "job_id": job_id},
+                {"applicant_id": applicant2_id, "job_id": job_id},
             ),
             mongodb.find_document(
                 "parsed_resume",
-                {"user_id": applicant1_id},
+                {"applicant_id": applicant1_id},
             ),
             mongodb.find_document(
                 "parsed_resume",
-                {"user_id": applicant2_id},
+                {"applicant_id": applicant2_id},
             ),
         )
 
