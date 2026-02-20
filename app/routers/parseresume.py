@@ -12,6 +12,7 @@ from app.services.cloudinary_service import fetch_file, generate_signed_url
 from app.services.mongodb_service import mongodb
 from app.services.supabase_service import get_supabase_admin_client
 from app.dependencies import parsing_gemini_model, parsing_prompt
+from app.response_schemas.resume_format import ParseResumeResponse, DeleteParsedResumeResponse
 
 router = APIRouter(prefix="/parseresume", tags=["Parse Resume"])
 
@@ -57,7 +58,7 @@ async def extract_text_from_pdf(pdf_url: str) -> str:
 
 
 @router.post("/")
-async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | Any:
+async def parse_resume(public_id: str, applicant_id: str) -> ParseResumeResponse:
     try:
         file = await fetch_file(public_id)
 
@@ -111,16 +112,16 @@ async def parse_resume(public_id: str, applicant_id: str) -> dict[str, str] | An
             await mongodb.delete_document("parsed_resume", {"_id": inserted_id})
             raise HTTPException(status_code=404, detail="User not found")
 
-        return {
-            "message": "Resume parsed successfully",
-            "parsed_resume_id": str(inserted_id),
-        }
+        return ParseResumeResponse(
+            message="Resume parsed successfully",
+            parsed_resume_id=str(inserted_id),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/")
-async def delete_parsed_resume(applicant_id: str):
+async def delete_parsed_resume(applicant_id: str) -> DeleteParsedResumeResponse:
     await asyncio.gather(
         mongodb.delete_document("parsed_resume", {"user_id": applicant_id}),
         asyncio.get_running_loop().run_in_executor(
@@ -133,4 +134,7 @@ async def delete_parsed_resume(applicant_id: str):
                 .execute()
             ),
         ),
+    )
+    return DeleteParsedResumeResponse(
+        message="Resume succesfully deleted!"
     )

@@ -6,6 +6,7 @@ import re
 
 from app.services.mongodb_service import mongodb
 from app.dependencies import localized_comparison_prompt, comparing_gemini_model
+from app.response_schemas.comparison_format import CompareCandidatesResponse
 
 router = APIRouter(prefix="/compare_candidate", tags=["Compare Candidate"])
 
@@ -46,7 +47,7 @@ async def compare_candidates(
     applicant1_id: str = Query(..., description="User ID of the first applicant"),
     applicant2_id: str = Query(..., description="User ID of the second applicant"),
     job_id: str = Query(..., description="Job ID for which applicants are compared"),
-) -> Any:
+) -> CompareCandidatesResponse:
     try:
         (
             score_candidate_A_doc,
@@ -121,6 +122,7 @@ async def compare_candidates(
         if raw_output.startswith("```json"):
             raw_output = re.sub(r"```json|```", "", raw_output).strip()
 
-        return json.loads(raw_output)
-    except Exception:
-        pass
+        comparison_dict = json.loads(raw_output)
+        return CompareCandidatesResponse(**comparison_dict)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

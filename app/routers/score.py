@@ -13,6 +13,7 @@ from app.dependencies import (
     core_values,
     scoring_gemini_model,
 )
+from app.response_schemas.score_format import ScoreCandidateResponse
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
@@ -71,7 +72,7 @@ async def score_candidate(
     user_id: str = Query(..., description="User ID"),
     job_id: str = Query(..., description="Job ID"),
     applicant_id: str = Query(..., description="Applicant ID"),
-):
+) -> ScoreCandidateResponse:
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data, transcribed, parsed_resume = await asyncio.gather(
@@ -240,10 +241,10 @@ async def score_candidate(
                 status_code=500, detail="Failed to update job applicant"
             )
 
-        return {
-            "message": "Candidate scored successfully",
-            "score_data": convert_objectid(raw_output),
-        }
+        return ScoreCandidateResponse(
+            message="Candidate scored successfully",
+            score_data=convert_objectid(raw_output),
+        )
     except Exception as e:
         await asyncio.get_running_loop().run_in_executor(
             _executor,

@@ -15,7 +15,14 @@ from app.dependencies import (
 )
 from app.executor import _executor
 from app.services.supabase_service import get_supabase_admin_client
-from app.response_schemas.chatbot_format import ConversationDeleteResponse, ChatRequest
+from app.response_schemas.chatbot_format import (
+    ConversationMessage,
+    ConversationDeleteResponse,
+    ChatRequest,
+    CreateConversationResponse,
+    UseChatBotResponse,
+    GetConversationMessagesResponse,
+)
 
 
 FAISS_PATH = "D:/Documents/A_College/alliance thesis/ai_api/rag.faiss"
@@ -23,8 +30,8 @@ FAISS_PATH = "D:/Documents/A_College/alliance thesis/ai_api/rag.faiss"
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
 
 
-def format_history(messages: list[dict]) -> str:
-    return "\n".join(m["message"] for m in messages)
+def format_history(messages: list[ConversationMessage]) -> str:
+    return "\n".join(f"{m.role.capitalize()}: {m.message}" for m in messages)
 
 
 def retrieve_context(query: str, k: int = 3) -> str:
@@ -40,7 +47,9 @@ def retrieve_context(query: str, k: int = 3) -> str:
 
 
 @router.get("/messages/{conversation_id}")
-async def get_conversation_messages(conversation_id: str):
+async def get_conversation_messages(
+    conversation_id: str,
+) -> GetConversationMessagesResponse:
     supabase_client = get_supabase_admin_client()
     resp = await asyncio.get_running_loop().run_in_executor(
         _executor,
@@ -56,14 +65,16 @@ async def get_conversation_messages(conversation_id: str):
     if resp.data is None:
         raise HTTPException(status_code=500, detail="Supabase query failed")
 
-    return {
-        "conversation_id": conversation_id,
-        "messages": resp.data,
-    }
+    messages = [ConversationMessage.model_validate(row) for row in resp.data]
+
+    return GetConversationMessagesResponse(
+        conversation_id=conversation_id,
+        messages=messages,
+    )
 
 
 @router.post("/use/{conversation_id}")
-async def use_chatbot(conversation_id: str, request: ChatRequest):
+async def use_chatbot(conversation_id: str, request: ChatRequest) -> UseChatBotResponse:
     user_input = request.user_input
     supabase_client = get_supabase_admin_client()
     try:
@@ -88,11 +99,8 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
         #     "gemma_output": raw_output
         # }
         history = await get_conversation_messages(conversation_id)
+        messages = history.messages
 
-        if history["messages"] is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-
-        messages = history["messages"]
         last_5 = messages[-5:]
 
         history_text = format_history(last_5)
@@ -157,44 +165,23 @@ async def use_chatbot(conversation_id: str, request: ChatRequest):
         if resp_assistant.data is None:
             raise HTTPException(status_code=500, detail="Insert failed")
 
-        return {
-            "message": "Chatbot successfully replied",
-            "reply": reply,
-        }
+        return UseChatBotResponse(
+            message="Chatbot successfully replied",
+            reply=reply,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/new_conv")
-async def create_conversation():
+def create_conversation() -> CreateConversationResponse:
     conversation_id = str(uuid4())
 
-    respond = await asyncio.get_running_loop().run_in_executor(
-        _executor,
-        lambda: (
-            get_supabase_admin_client()
-            .table("conversation_messages")
-            .insert(
-                {
-                    "conversation_id": conversation_id,
-                    "role": "assistant",
-                    "message": "👋 Hi! I’m your AI assistant. Ask me about jobs, applications, or your profile.",
-                }
-            )
-            .execute()
-        ),
+    return CreateConversationResponse(
+        conversation_id=conversation_id,
+        message="Conversation created",
     )
-
-    if respond.data is None:
-        raise HTTPException(
-            status_code=500, detail="Internal error creating conversation"
-        )
-
-    return {
-        "conversation_id": conversation_id,
-        "message": "Conversation created",
-    }
 
 
 @router.delete("/delete/{conversation_id}")

@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 transcript_response_schema = {
     "type": "object",
     "properties": {
@@ -64,3 +66,10 @@ transcript_response_schema = {
         "cultural_fit_insights_phrases"
     ]
 }
+
+class TranscribeResponse(BaseModel):
+    message: str
+    transcribed_id: str
+
+class DeleteTranscriptionResponse(BaseModel):
+    message: str

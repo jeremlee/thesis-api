@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 candidate_comparison_schema = {
     "type": "object",
     "properties": {
@@ -21,3 +23,8 @@ candidate_comparison_schema = {
         "highlights",
     ],
 }
+
+class CompareCandidatesResponse(BaseModel):
+    better_candidate: str
+    reason: str
+    highlights: list[str]

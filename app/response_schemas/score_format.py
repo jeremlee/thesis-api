@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 scoring_response_schema = {
     "type": "object",
     "properties": {
@@ -26,3 +28,7 @@ scoring_response_schema = {
         "skill_gaps_recommendations",
     ],
 }
+
+class ScoreCandidateResponse(BaseModel):
+    message: str
+    score_data: str

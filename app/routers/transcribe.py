@@ -13,7 +13,7 @@ from app.services.cloudinary_service import fetch_file
 from app.services.mongodb_service import mongodb
 from app.executor import _executor
 from app.services.supabase_service import get_supabase_admin_client
-
+from app.response_schemas.transcript_format import TranscribeResponse, DeleteTranscriptionResponse
 
 router = APIRouter(prefix="/transcribe", tags=["Transcribe"])
 
@@ -32,7 +32,7 @@ def extract_json(text: str) -> dict:
 
 
 @router.post("/")
-async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
+async def transcribe(public_id: str, applicant_id: str) -> TranscribeResponse:
     try:
         video_metadata = await fetch_file(public_id, resource_type="video")
         if not video_metadata:
@@ -92,26 +92,31 @@ async def transcribe(public_id: str, applicant_id: str) -> dict[str, str] | Any:
                 status_code=500, detail="Failed to update user with transcription ID"
             )
 
-        return {
-            "message": "Transcription completed successfully",
-            "transcribed_id": str(inserted_id),
-        }
+        return TranscribeResponse(
+            message="Transcription completed successfully",
+            transcribed_id=str(inserted_id),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/")
-async def delete_transcription(applicant_id: str):
-    await asyncio.gather(
-        mongodb.delete_document("transcribed", {"user_id": applicant_id}),
-        asyncio.get_running_loop().run_in_executor(
-            _executor,
-            lambda: get_supabase_admin_client()
-            .table("users")
-            .update({"transcribed_id": None})
-            .eq("id", applicant_id)
-            .execute(),
-        ),
-    )
+async def delete_transcription(applicant_id: str) -> DeleteTranscriptionResponse:
+    try:
+        await asyncio.gather(
+            mongodb.delete_document("transcribed", {"user_id": applicant_id}),
+            asyncio.get_running_loop().run_in_executor(
+                _executor,
+                lambda: get_supabase_admin_client()
+                .table("users")
+                .update({"transcribed_id": None})
+                .eq("id", applicant_id)
+                .execute(),
+            ),
+        )
 
-    return {"message": "Transcription deleted successfully"}
+        return DeleteTranscriptionResponse(
+            message="Transcription deleted successfully"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
