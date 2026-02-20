@@ -10,7 +10,7 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sklearn.metrics.pairwise import cosine_similarity
-
+import time
 from app.dependencies import (
     core_values,
     embedding_model,
@@ -267,6 +267,7 @@ async def score_candidate(
         ..., description="Cloudinary public_id of transcript video"
     ),
 ) -> ScoreCandidateResponse:
+    start_time = time.perf_counter()
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data = await asyncio.get_running_loop().run_in_executor(
@@ -499,7 +500,8 @@ async def score_candidate(
             + f"JOB_FIT_SCORE = {job_fit_final_score}\n"
             + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
         )
-
+        end_time = time.perf_counter()
+        duration = end_time - start_time
         raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
         raw_output = extract_json_payload(raw_output)
 
@@ -508,6 +510,9 @@ async def score_candidate(
         raw_output["transcription_score"] = transcription_score_pct
         raw_output["transcription_cultural_fit_score"] = trans_cultural_fit_score_pct
         raw_output["cultural_fit_score"] = cultural_fit_score_pct
+
+        # response time
+        raw_output["response_time"] = round(duration, 2)
 
         # adding the scores to the field
         # final scores
