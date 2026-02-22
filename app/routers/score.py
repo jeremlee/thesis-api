@@ -84,38 +84,6 @@ def get_predictive_success_data(
     )
 
 
-# def flatten_resume(resume_json: dict) -> str:
-#     """
-#     Convert resume JSON into a plain text string for embedding.
-#     Only includes soft_skills, hard_skills, work_experience, and projects.
-#     """
-#     parts = []
-
-#     # Soft skills
-#     if "soft_skills" in resume_json:
-#         parts.append("Soft skills: " + ", ".join(resume_json["soft_skills"]))
-
-#     # Hard skills
-#     if "hard_skills" in resume_json:
-#         parts.append("Hard skills: " + ", ".join(resume_json["hard_skills"]))
-
-#     # Work experience
-#     if "work_experience" in resume_json:
-#         for exp in resume_json["work_experience"]:
-#             title = exp.get("title", "")
-#             company = exp.get("company", "")
-#             parts.append(f"{title} at {company}")
-
-#     # Projects
-#     if "projects" in resume_json:
-#         for proj in resume_json["projects"]:
-#             name = proj.get("name", "")
-#             desc = proj.get("description", "")
-#             parts.append(f"Project {name}: {desc}")
-
-#     return "\n".join(parts)
-
-
 # Convert ObjectId to string for JSON serialization from MongoDB
 def convert_objectid(obj: dict) -> dict:
     """Convert ObjectId instances to strings. Always returns a dict."""
@@ -260,14 +228,15 @@ async def ensure_transcription(
 async def score_candidate(
     job_id: str = Query(..., description="Job ID"),
     applicant_id: str = Query(..., description="Applicant ID"),
+    # This can be obtained from the database through applicant_id but instead moved the responsibility to NextJS to reduce latency of fetching from database
     resume_public_id: str = Query(
-        ..., description="Cloudinary public_id of resume PDF"
+        ..., description="Cloudinary public_id of resume PDF."
     ),
+    # This can be obtained from the database through applicant_id but instead moved the responsibility to NextJS to reduce latency of fetching from database
     transcript_public_id: str = Query(
         ..., description="Cloudinary public_id of transcript video"
     ),
 ) -> ScoreCandidateResponse:
-    start_time = time.perf_counter()
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data = await asyncio.get_running_loop().run_in_executor(
@@ -500,9 +469,14 @@ async def score_candidate(
             + f"JOB_FIT_SCORE = {job_fit_final_score}\n"
             + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
         )
+
+        start_time = time.perf_counter()
+        raw_output = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: scoring_gemini_model.generate_content(prompt).text.strip(),
+        )
         end_time = time.perf_counter()
-        duration = end_time - start_time
-        raw_output = scoring_gemini_model.generate_content(prompt).text.strip()
+        duration = end_time - start_time  # Seconds
         raw_output = extract_json_payload(raw_output)
 
         # use these for success likelihood "visualization"
@@ -522,7 +496,7 @@ async def score_candidate(
 
         # Ensure BSON-safe payload (ObjectId/numpy scalars/nested structures)
         raw_output = _convert_value(raw_output)
-        
+
         # Ensure raw_output is a dict before passing to convert_objectid
         if not isinstance(raw_output, dict):
             raise HTTPException(status_code=500, detail="Invalid score data format")
@@ -533,6 +507,7 @@ async def score_candidate(
                 "applicant_id": applicant_id,
                 "job_id": job_id,
                 "score_data": raw_output,
+                "created_at": time.time(),
             },
         )
 

@@ -1,21 +1,5 @@
-import asyncio
-from fastapi import APIRouter, HTTPException
-import numpy as np
-
-import json
-import re
-from uuid import uuid4
-
-from app.dependencies import (
-    chatbot_prompt,
-    chatbot_gemini_model,
-    embedding_model,
-)
+from fastapi import APIRouter
 from pydantic import BaseModel
-from app.executor import _executor
-from app.services.supabase_service import get_supabase_admin_client
-
-from sklearn.metrics.pairwise import cosine_similarity
 
 class EvaluationData(BaseModel):
     job_fit_score: int
