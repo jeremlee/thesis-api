@@ -25,6 +25,17 @@ scoring_response_schema = {
     ],
 }
 
+
 class ScoreCandidateResponse(BaseModel):
     message: str
-    score_data: Dict[str, Any]
+    reason: str
+    phrases: list[str]
+    skill_gaps_recommendations: str
+    soft_skills_score: int
+    transcription_score: int 
+    transcription_cultural_fit_score: int
+    cultural_fit_score: int
+    response_time: float
+    predictive_success: int
+    job_fit_score: int
+    job_fit_stars: float

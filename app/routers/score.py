@@ -31,6 +31,7 @@ from app.services.supabase_service import get_supabase_admin_client
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
+BENCHMARK = 0.80
 
 class JobFitData(BaseModel):
     hard_skills: str
@@ -388,12 +389,12 @@ async def score_candidate(
         )
 
         # normalizing values
-        # will be stored in raw_output
-        soft_skills_score_pct = min(100, int((soft_skills_score / 0.85) * 100))
-        transcription_score_pct = min(100, int((transcription_score / 0.85) * 100))
-        cultural_fit_score_pct = min(100, int((cultural_fit_score / 0.85) * 100))
+        
+        soft_skills_score_pct = min(100, int((soft_skills_score / BENCHMARK) * 100))
+        transcription_score_pct = min(100, int((transcription_score / BENCHMARK) * 100))
+        cultural_fit_score_pct = min(100, int((cultural_fit_score / BENCHMARK) * 100))
         trans_cultural_fit_score_pct = min(
-            100, int((transcription_cultural_fit_score / 0.85) * 100)
+            100, int((transcription_cultural_fit_score / BENCHMARK) * 100)
         )
 
         # 2. Calculate Final Predictive Success (50% Job Fit + 50% Behavior)
@@ -406,17 +407,17 @@ async def score_candidate(
 
         # Since MPNet scores rarely hit 1.0, we scale the result.
 
-        # A raw score of 0.80 should probably look like a 95% to a recruiter.
+        # A raw score of 0.75 should probably look like a 95% to a recruiter.
 
         predictive_success_final_score = min(
-            100, int((predictive_success_raw / 0.85) * 100)
+            100, int((predictive_success_raw / BENCHMARK) * 100)
         )
 
         # 4. Job Fit Score (1-5 Star Rating)
 
         # Similarly, we scale 0.85 similarity to be a 5-star result. 0.85 is the perfect score
-        job_fit_final_score = min(100, int((job_fit_score / 0.85) * 100))
-        job_fit_stars = float(round(min(5.0, (job_fit_score / 0.85) * 5), 1))
+        job_fit_final_score = min(100, int((job_fit_score / BENCHMARK) * 100))
+        job_fit_stars = float(round(min(5.0, (job_fit_score / BENCHMARK) * 5), 1))
 
         """
         scores are based from:
@@ -478,22 +479,8 @@ async def score_candidate(
         end_time = time.perf_counter()
         duration = end_time - start_time  # Seconds
         raw_output = extract_json_payload(raw_output)
-
-        # use these for success likelihood "visualization"
-        raw_output["soft_skills_score"] = soft_skills_score_pct
-        raw_output["transcription_score"] = transcription_score_pct
-        raw_output["transcription_cultural_fit_score"] = trans_cultural_fit_score_pct
-        raw_output["cultural_fit_score"] = cultural_fit_score_pct
-
         # response time
-        raw_output["response_time"] = round(duration, 2)
-
-        # adding the scores to the field
-        # final scores
-        raw_output["predictive_success"] = predictive_success_final_score
-        raw_output["job_fit_score"] = job_fit_final_score
-        raw_output["job_fit_stars"] = job_fit_stars
-
+        response_time = round(duration, 2)
         # Ensure BSON-safe payload (ObjectId/numpy scalars/nested structures)
         raw_output = _convert_value(raw_output)
 
@@ -541,8 +528,19 @@ async def score_candidate(
 
         return ScoreCandidateResponse(
             message="Candidate scored successfully",
-            score_data=raw_output,
+            reason=raw_output["reason"],
+            phrases=raw_output["phrases"],
+            skill_gaps_recommendations=raw_output["skills_gaps_recommendations"],
+            soft_skills_score=soft_skills_score_pct,
+            transcription_score=transcription_score_pct,
+            transcription_cultural_fit_score=trans_cultural_fit_score_pct,
+            cultural_fit_score=cultural_fit_score_pct,
+            response_time=response_time,
+            predictive_success=predictive_success_final_score,
+            job_fit_score=job_fit_final_score,
+            job_fit_stars=job_fit_stars,
         )
     except Exception as e:
         # surface a clear HTTP error
         raise HTTPException(status_code=500, detail=str(e))
+
