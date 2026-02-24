@@ -479,6 +479,21 @@ async def score_candidate(
         end_time = time.perf_counter()
         duration = end_time - start_time  # Seconds
         raw_output = extract_json_payload(raw_output)
+
+        # use these for success likelihood "visualization"
+        raw_output["soft_skills_score"] = soft_skills_score_pct
+        raw_output["transcription_score"] = transcription_score_pct
+        raw_output["transcription_cultural_fit_score"] = trans_cultural_fit_score_pct
+        raw_output["cultural_fit_score"] = cultural_fit_score_pct
+
+        # response time
+        raw_output["response_time"] = round(duration, 2)
+
+        # adding the scores to the field
+        # final scores
+        raw_output["predictive_success"] = predictive_success_final_score
+        raw_output["job_fit_score"] = job_fit_final_score
+        raw_output["job_fit_stars"] = job_fit_stars
         # response time
         response_time = round(duration, 2)
         # Ensure BSON-safe payload (ObjectId/numpy scalars/nested structures)
