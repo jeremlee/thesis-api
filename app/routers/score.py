@@ -530,7 +530,7 @@ async def score_candidate(
             message="Candidate scored successfully",
             reason=raw_output["reason"],
             phrases=raw_output["phrases"],
-            skill_gaps_recommendations=raw_output["skills_gaps_recommendations"],
+            skill_gaps_recommendations=raw_output["skill_gaps_recommendations"],
             soft_skills_score=soft_skills_score_pct,
             transcription_score=transcription_score_pct,
             transcription_cultural_fit_score=trans_cultural_fit_score_pct,
