@@ -139,6 +139,16 @@ async def extract_text_from_pdf_url(pdf_url: str) -> str:
 async def ensure_parsed_resume(
     applicant_id: str, resume_public_id: str, supabase_client
 ) -> dict:
+
+    # delete if already exists
+    await mongodb.delete_document(
+        "parsed_resume",
+        {
+            "applicant_id": applicant_id,
+            "resume_public_id": resume_public_id,
+        },
+    )
+    # proceed with operation (no more redundancy in MongoDB)
     file = await fetch_file(resume_public_id)
     resource_type = file.get("resource_type", "raw") if file else "raw"
     pdf_url = generate_signed_url(resume_public_id, resource_type)
@@ -182,6 +192,15 @@ async def ensure_parsed_resume(
 async def ensure_transcription(
     applicant_id: str, video_public_id: str, supabase_client
 ) -> dict:
+    # delete if already exists
+    await mongodb.delete_document(
+        "transcribed",
+        {
+            "applicant_id": applicant_id,
+            "video_public_id": video_public_id,
+        },
+    )
+    # proceed with operation (no more redundancy in MongoDB)
     video_metadata = await fetch_file(video_public_id, resource_type="video")
     if not video_metadata:
         raise HTTPException(status_code=400, detail="Video file URL not found")
@@ -238,6 +257,13 @@ async def score_candidate(
         ..., description="Cloudinary public_id of transcript video"
     ),
 ) -> ScoreCandidateResponse:
+    
+    # delete if already exists
+    await mongodb.delete_document(
+        "scored_candidates",
+        {"applicant_id": applicant_id, "job_id": job_id},
+    )
+    # proceed with operation (no more redundancy in MongoDB)
     supabase_client = get_supabase_admin_client()
     try:
         job_listing_data = await asyncio.get_running_loop().run_in_executor(
