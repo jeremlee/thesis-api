@@ -520,10 +520,11 @@ async def score_candidate(
                     "interview_insights", "No interview insights found"
                 )
             )
+            + "Applicant skillS (self-rating): " + tag_rating_string
             + "CALCULATED SCORES BY COSINE SIMILARITY: \n"
             + f"JOB_FIT_SCORE = {job_fit_final_score}\n"
             + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
-            + "Applicant skillS: " + tag_rating_string
+            
         )
 
         start_time = time.perf_counter()
