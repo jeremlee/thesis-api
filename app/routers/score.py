@@ -292,7 +292,35 @@ async def score_candidate(
 
         tags_data = tags_response.data or []
         req_data = requirements_response.data or []
+        
 
+        skills_response = await asyncio.get_running_loop().run_in_executor(
+            _executor,
+            lambda: (
+                supabase_client.table("applicant_skills")
+                .select("tag_id, rating")
+                .eq("applicant_id", applicant_id)
+                .execute()
+            ),
+        )
+
+        skills_data = skills_response.data or []
+        skills_lookup = {s["tag_id"]: s["rating"] for s in skills_data}
+
+        skills_dict = {}
+
+        for t in tags_data:
+            tag_id = t["tag_id"]
+            tag_name = t["tags"]["name"]
+
+            skills_dict[tag_name] = skills_lookup.get(tag_id, 0)
+             
+        tag_rating_string = "\n".join(
+            f'{t["tags"]["name"]} : {skills_lookup[t["tag_id"]]}'
+            for t in tags_data
+            if t["tag_id"] in skills_lookup
+        )
+            
         tag_list = [
             t["tags"]["name"]
             for t in tags_data
@@ -469,6 +497,7 @@ async def score_candidate(
             + "CALCULATED SCORES BY COSINE SIMILARITY: \n"
             + f"JOB_FIT_SCORE = {job_fit_final_score}\n"
             + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
+            + "Applicant skillS: " + tag_rating_string
         )
 
         start_time = time.perf_counter()
