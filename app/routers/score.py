@@ -33,6 +33,7 @@ router = APIRouter(prefix="/score", tags=["Score"])
 
 BENCHMARK = 0.80
 
+
 class JobFitData(BaseModel):
     hard_skills: str
     work_experiences: str
@@ -145,7 +146,6 @@ async def ensure_parsed_resume(
         "parsed_resume",
         {
             "applicant_id": applicant_id,
-            "resume_public_id": resume_public_id,
         },
     )
     # proceed with operation (no more redundancy in MongoDB)
@@ -197,7 +197,6 @@ async def ensure_transcription(
         "transcribed",
         {
             "applicant_id": applicant_id,
-            "video_public_id": video_public_id,
         },
     )
     # proceed with operation (no more redundancy in MongoDB)
@@ -257,11 +256,11 @@ async def score_candidate(
         ..., description="Cloudinary public_id of transcript video"
     ),
 ) -> ScoreCandidateResponse:
-    
+
     # delete if already exists
     await mongodb.delete_document(
         "scored_candidates",
-        {"applicant_id": applicant_id, "job_id": job_id},
+        {"applicant_id": applicant_id},
     )
     # proceed with operation (no more redundancy in MongoDB)
     supabase_client = get_supabase_admin_client()
@@ -318,7 +317,6 @@ async def score_candidate(
 
         tags_data = tags_response.data or []
         req_data = requirements_response.data or []
-        
 
         skills_response = await asyncio.get_running_loop().run_in_executor(
             _executor,
@@ -340,13 +338,13 @@ async def score_candidate(
             tag_name = t["tags"]["name"]
 
             skills_dict[tag_name] = skills_lookup.get(tag_id, 0)
-             
+
         tag_rating_string = "\n".join(
-            f'{t["tags"]["name"]} : {skills_lookup[t["tag_id"]]}'
+            f"{t['tags']['name']} : {skills_lookup[t['tag_id']]}"
             for t in tags_data
             if t["tag_id"] in skills_lookup
         )
-            
+
         tag_list = [
             t["tags"]["name"]
             for t in tags_data
@@ -443,7 +441,7 @@ async def score_candidate(
         )
 
         # normalizing values
-        
+
         soft_skills_score_pct = min(100, int((soft_skills_score / BENCHMARK) * 100))
         transcription_score_pct = min(100, int((transcription_score / BENCHMARK) * 100))
         cultural_fit_score_pct = min(100, int((cultural_fit_score / BENCHMARK) * 100))
@@ -520,11 +518,11 @@ async def score_candidate(
                     "interview_insights", "No interview insights found"
                 )
             )
-            + "Applicant skillS (self-rating): " + tag_rating_string
+            + "Applicant skillS (self-rating): "
+            + tag_rating_string
             + "CALCULATED SCORES BY COSINE SIMILARITY: \n"
             + f"JOB_FIT_SCORE = {job_fit_final_score}\n"
             + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
-            
         )
 
         start_time = time.perf_counter()
@@ -614,4 +612,3 @@ async def score_candidate(
     except Exception as e:
         # surface a clear HTTP error
         raise HTTPException(status_code=500, detail=str(e))
-
