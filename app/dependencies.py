@@ -1,26 +1,26 @@
-from asyncio import Semaphore
 import asyncio
-from pydantic import BaseModel
+import json
+import re
+from asyncio import Semaphore
+from json import JSONDecodeError, JSONDecoder
+from typing import Any
+
+import torch
+import whisper
 from dotenv import load_dotenv
 from google.generativeai.client import configure
 from google.generativeai.generative_models import GenerativeModel
-import whisper
-import json
-from whisper.model import Whisper
+from pydantic import BaseModel
+from sentence_transformers import SentenceTransformer
 from transformers import pipeline
-import torch
-from typing import Any
-from app.executor import _executor
-import re
-from json import JSONDecoder, JSONDecodeError
+from whisper.model import Whisper
 
 from app.config import get_settings
-from app.response_schemas.resume_format import resume_response_schema
-from app.response_schemas.transcript_format import transcript_response_schema
-from app.response_schemas.score_format import scoring_response_schema
-from app.response_schemas.comparison_format import candidate_comparison_schema
 from app.response_schemas.chatbot_format import chatbot_schema
-from sentence_transformers import SentenceTransformer
+from app.response_schemas.comparison_format import candidate_comparison_schema
+from app.response_schemas.resume_format import resume_response_schema
+from app.response_schemas.score_format import scoring_response_schema
+from app.response_schemas.transcript_format import transcript_response_schema
 
 load_dotenv(".env.local")
 configure(api_key=get_settings().gemini_api_key)
@@ -45,13 +45,9 @@ async def get_gemma_pipe():
         )
 
     try:
-        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
-            _executor, lambda: _initialize_pipe(device=0)
-        )
+        GEMMA_PIPE = await asyncio.to_thread(lambda: _initialize_pipe(device=0))
     except AssertionError:
-        GEMMA_PIPE = await asyncio.get_running_loop().run_in_executor(
-            _executor, lambda: _initialize_pipe(device=-1)
-        )
+        GEMMA_PIPE = await asyncio.to_thread(lambda: _initialize_pipe(device=-1))
 
     return GEMMA_PIPE
 
@@ -92,6 +88,7 @@ def extract_json_text(s: str) -> str | None:
             start = s.find("{", start + 1)
     return None
 
+
 core_values = (
     # QUALITY + Attention to Detail
     "Quality and Excellence: A commitment to high standards, precision, and craftsmanship. "
@@ -124,27 +121,22 @@ soft_skills_baseline = (
     "Effective Communication: The ability to articulate ideas clearly and concisely. "
     "Expertise in active listening, stakeholder management, and tailoring "
     "complex information for different audiences. "
-    
     # EMOTIONAL INTELLIGENCE
     "Emotional Intelligence (EQ): High self-awareness and social awareness. "
     "Demonstrates empathy, manages personal triggers, and reads social cues "
     "effectively to build trust and maintain positive relationships. "
-    
     # CRITICAL THINKING
     "Critical Thinking and Reasoning: Logical approach to decision-making. "
     "Capable of analyzing data, identifying biases, and connecting dots between "
     "disparate pieces of information to reach a sound conclusion. "
-    
     # CONFLICT RESOLUTION
     "Conflict Management: Navigating disagreements with diplomacy. "
     "Focused on win-win solutions, de-escalating tension, and maintaining "
     "professionalism during difficult conversations or high-stress periods. "
-    
     # LEADERSHIP & INFLUENCE
     "Influence and Leadership: Even without a formal title, the ability to "
     "motivate others, delegate tasks effectively, and drive consensus "
     "around shared goals. "
-    
     # RESILIENCE & GRIT
     "Mental Resilience: Maintaining a positive and productive attitude in the "
     "face of rejection, failure, or heavy workloads. Shows persistence and "
@@ -281,7 +273,6 @@ You must follow these rules strictly:
     + "\n\n### User Question:\n"
     + "{question}\n"
 )
-
 
 
 localized_comparison_prompt = (

@@ -33,4 +33,3 @@ bottleneck_response_schema = {
         "time",
     ],
 }
-

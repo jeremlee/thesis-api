@@ -1,15 +1,34 @@
-from fastapi import APIRouter
-from app.routers.schemas.test import SkillsRequest
-from app.routers.score import cosine_similarity_scoring
+import asyncio
 
+from fastapi import APIRouter, HTTPException
+from supabase import Client
+
+from app.services.supabase_service import get_supabase_admin_client
+from entities.fastapi.joined import JobListingWithRelations
 
 router = APIRouter(prefix="/test", tags=["Test"])
 
 
 @router.post("/")
-async def test_endpoint(skills: SkillsRequest) -> dict[str, str]:
+async def test_endpoint():
+    supabase_client: Client = get_supabase_admin_client()
+
     try:
-        result = 1 + 4 * cosine_similarity_scoring(skills.resume_skills, skills.job_skills)
-        return {"message": str(result)}
-    except Exception as e:
-        return {"error": str(e)}
+        response = await asyncio.to_thread(
+            lambda: (
+                supabase_client.table("job_listings")
+                .select("*, jl_requirements(*), job_tags(*, tags(*))")
+                .single()
+                .execute()
+                .data
+            )
+        )
+
+        job_listing: JobListingWithRelations = JobListingWithRelations.model_validate(
+            response
+        )
+        return {
+            "job_listing_tags": job_listing,
+        }
+    except HTTPException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)

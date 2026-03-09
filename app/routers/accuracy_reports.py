@@ -1,14 +1,17 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+
 class EvaluationData(BaseModel):
     job_fit_score: int
     predictive_success_score: int
 
+
 class CompareScoringResponse(BaseModel):
     accuracy: int
-    label: str 
+    label: str
     recommendation: str
+
 
 router = APIRouter(prefix="/reports", tags=["Accuracy Reports"])
 
@@ -18,7 +21,9 @@ router = APIRouter(prefix="/reports", tags=["Accuracy Reports"])
 
 # compares the AI's results to the HR's own results regarding a candidate's scoring
 @router.post("/compare")
-async def compare_scoring(ai_evaluation_data: EvaluationData, hr_evaluation_data: EvaluationData) -> CompareScoringResponse:
+async def compare_scoring(
+    ai_evaluation_data: EvaluationData, hr_evaluation_data: EvaluationData
+) -> CompareScoringResponse:
     MAX_SCORE = 100
 
     # calculate similarity between AI and HR's job fit score
@@ -28,11 +33,14 @@ async def compare_scoring(ai_evaluation_data: EvaluationData, hr_evaluation_data
     )
     # calculate similarity between AI and HR's skills gaps recommendation score
     pred_success_score = 1 - (
-        abs(ai_evaluation_data.predictive_success_score - hr_evaluation_data.predictive_success_score)
+        abs(
+            ai_evaluation_data.predictive_success_score
+            - hr_evaluation_data.predictive_success_score
+        )
         / MAX_SCORE
     )
 
-    overall_score = (job_fit_score + pred_success_score) / 2 # equal weights, 50/50
+    overall_score = (job_fit_score + pred_success_score) / 2  # equal weights, 50/50
     ai_accuracy_pct = int(overall_score * 100)
 
     # determine the label based on the percentage
@@ -48,15 +56,7 @@ async def compare_scoring(ai_evaluation_data: EvaluationData, hr_evaluation_data
     else:
         label = "Low accuracy"
         recommendation = "The AI's decision does not match well with the HR's decision. It might be a human error or the weights of the scoring need to be adjusted."
-    
+
     return CompareScoringResponse(
-        accuracy=ai_accuracy_pct,
-        label=label,
-        recommendation=recommendation
+        accuracy=ai_accuracy_pct, label=label, recommendation=recommendation
     )
-
-
-
-
-
-

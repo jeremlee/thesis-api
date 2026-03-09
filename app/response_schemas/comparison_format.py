@@ -28,6 +28,7 @@ candidate_comparison_schema = {
     ],
 }
 
+
 class CompareCandidatesResponse(BaseModel):
     better_candidate: str
     reason: str

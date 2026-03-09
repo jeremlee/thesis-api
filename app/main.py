@@ -1,23 +1,10 @@
-from contextlib import asynccontextmanager
+import uvicorn
 from fastapi import FastAPI, HTTPException
 
-from app.routers import  score, comparison, chatbot, accuracy_reports
-from app.executor import _executor
-import uvicorn
+from app.routers import accuracy_reports, chatbot, comparison, score
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        pass
-    except Exception as e:
-        raise RuntimeError("Failed to initialize GEMMA pipeline") from e
-
-    yield
-    _executor.shutdown(wait=True)
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.include_router(score.router)
 app.include_router(comparison.router)
@@ -36,7 +23,7 @@ def health_check() -> dict[str, str]:
         return {"status": "ok", "message": "API is running smoothly."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000)
-

@@ -1,16 +1,22 @@
 import asyncio
 import io
 import json
+import os
 import re
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 import numpy as np
 import PyPDF2
-import requests
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sklearn.metrics.pairwise import cosine_similarity
-import time
+from supabase import Client
+
 from app.dependencies import (
     core_values,
     embedding_model,
@@ -23,11 +29,18 @@ from app.dependencies import (
     transcript_gemini_model,
     transcription_model,
 )
-from app.executor import _executor
 from app.response_schemas.score_format import ScoreCandidateResponse
-from app.services.cloudinary_service import fetch_file, generate_signed_url
-from app.services.mongodb_service import mongodb
+from app.response_schemas.transcript_format import TranscriptFormat
 from app.services.supabase_service import get_supabase_admin_client
+from entities.fastapi.joined import JobListingWithRelations
+from entities.fastapi.jsonb import ScoreCandidateFormat
+from entities.fastapi.schema_public_latest import (
+    PublicApplicants,
+    PublicApplicantSkills,
+    PublicParsedResume,
+    PublicScoredCandidates,
+    PublicTranscribed,
+)
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
@@ -43,6 +56,32 @@ class JobFitData(BaseModel):
 class PredictiveSuccessData(BaseModel):
     soft_skills: str
     transcription: str
+
+
+class InsertResult(BaseModel):
+    inserted_id: str
+    applicant_id: str
+    raw_output: dict
+
+
+def _transcribe_video_bytes(video_bytes: bytes, source_name: str) -> dict:
+    # Keep original extension when possible so ffmpeg can infer container correctly.
+    suffix = Path(source_name).suffix.lower()
+    if suffix not in {".mp4", ".webm", ".mov", ".mkv", ".m4a", ".mp3", ".wav"}:
+        suffix = ".mp4"
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(video_bytes)
+            tmp.flush()
+            tmp_path = tmp.name
+
+        # If running on CPU-only, fp16=False avoids warnings/errors on some setups.
+        return transcription_model.transcribe(tmp_path, fp16=False)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def get_job_fit_data(resume_json: dict) -> JobFitData:
@@ -122,312 +161,368 @@ def extract_json_payload(text: str) -> dict:
         return json.loads(match.group())
 
 
-async def extract_text_from_pdf_url(pdf_url: str) -> str:
+async def extract_text_from_pdf_url(pdf_bytes: bytes) -> str:
     def _extract_text() -> str:
-        text = ""
-        for page in PyPDF2.PdfReader(
-            io.BytesIO(requests.get(pdf_url, timeout=30).content)
-        ).pages:
+        text: str = ""
+        for page in PyPDF2.PdfReader(io.BytesIO(pdf_bytes)).pages:
             text += (page.extract_text() or "") + "\n"
         output = text.strip()
         if not output:
             raise ValueError("No text could be extracted from the PDF.")
         return output
 
-    return await asyncio.get_running_loop().run_in_executor(_executor, _extract_text)
+    return await asyncio.to_thread(_extract_text)
 
 
 async def ensure_parsed_resume(
-    applicant_id: str, resume_public_id: str, supabase_client
-) -> dict:
+    applicant_id: str, resume_path: str, supabase_client: Client, resume_id: UUID | None
+) -> InsertResult:
+    """
+    Ensures that the resume is parsed and stored in the database.
+    If a parsed resume already exists for the applicant,
+    it will be deleted and re-parsed to ensure the latest version is used.
 
-    # delete if already exists
-    await mongodb.delete_document(
-        "parsed_resume",
-        {
-            "applicant_id": applicant_id,
-        },
+    Args:
+        applicant_id (str): The ID of the applicant.
+        resume_path (str): The path to the resume file in Supabase storage.
+        supabase_client (Client): The Supabase client instance.
+        resume_id (str): The ID of the existing parsed resume to delete.
+    Returns:
+        InsertResult: A dictionary containing the parsed resume data and related information.
+    """
+
+    bucket, file_name = resume_path.split("/", 1)
+
+    download_result, _ = await asyncio.gather(
+        asyncio.to_thread(
+            lambda: supabase_client.storage.from_(bucket).download(file_name)
+        ),
+        (
+            asyncio.to_thread(
+                lambda: (
+                    supabase_client.table("parsed_resume")
+                    .delete()
+                    .eq("id", resume_id)
+                    .execute()
+                )
+            )
+            if resume_id
+            else asyncio.to_thread(lambda: None)
+        ),
     )
-    # proceed with operation (no more redundancy in MongoDB)
-    file = await fetch_file(resume_public_id)
-    resource_type = file.get("resource_type", "raw") if file else "raw"
-    pdf_url = generate_signed_url(resume_public_id, resource_type)
-    if not pdf_url:
-        raise HTTPException(status_code=400, detail="Resume file URL not found")
 
-    text = await extract_text_from_pdf_url(pdf_url)
+    if not download_result:
+        raise HTTPException(status_code=404, detail="Downloaded resume is empty")
 
-    raw_output = await asyncio.get_running_loop().run_in_executor(
-        _executor,
-        lambda: parsing_gemini_model.generate_content(
-            parsing_prompt + "\n" + text
-        ).text.strip(),
+    text: str = await extract_text_from_pdf_url(download_result)
+
+    parsed_output = extract_json_payload(
+        await asyncio.to_thread(
+            lambda: parsing_gemini_model.generate_content(
+                parsing_prompt + "\n" + text
+            ).text.strip(),
+        )
     )
-    parsed_output = extract_json_payload(raw_output)
 
-    inserted_id = await mongodb.insert_document(
-        "parsed_resume",
-        {"applicant_id": applicant_id, "raw_output": parsed_output},
+    inserted_row = await asyncio.to_thread(
+        lambda: (
+            supabase_client.table("parsed_resume")
+            .insert({"parsed_resume": parsed_output})
+            .execute()
+            .data
+        ),
     )
-    if not inserted_id:
-        raise HTTPException(status_code=500, detail="Failed to insert parsed resume")
 
-    await asyncio.get_running_loop().run_in_executor(
-        _executor,
+    if not inserted_row:
+        raise HTTPException(status_code=500, detail="Insert returned no data")
+
+    inserted_row = inserted_row[0]
+    if inserted_row is None or not isinstance(inserted_row, dict):
+        raise HTTPException(status_code=500, detail="Inserted row is invalid or None")
+
+    inserted_row["parsed_resume"] = json.dumps(inserted_row.get("parsed_resume"))
+
+    inserted: PublicParsedResume = PublicParsedResume.model_validate(inserted_row)
+
+    await asyncio.to_thread(
         lambda: (
             supabase_client.table("applicants")
-            .update({"parsed_resume_id": str(inserted_id)})
+            .update({"parsed_resume_id": str(inserted.id)})
             .eq("id", applicant_id)
             .execute()
         ),
     )
 
-    return {
-        "_id": inserted_id,
-        "applicant_id": applicant_id,
-        "raw_output": parsed_output,
-    }
+    return InsertResult(
+        inserted_id=str(inserted.id),
+        applicant_id=applicant_id,
+        raw_output=parsed_output,
+    )
 
 
 async def ensure_transcription(
-    applicant_id: str, video_public_id: str, supabase_client
-) -> dict:
-    # delete if already exists
-    await mongodb.delete_document(
-        "transcribed",
-        {
-            "applicant_id": applicant_id,
-        },
+    applicant_id: str, video_path: str, supabase_client, transcript_id: UUID | None
+) -> InsertResult:
+
+    bucket, file_name = video_path.split("/", 1)
+
+    download_result, _ = await asyncio.gather(
+        asyncio.to_thread(
+            lambda: supabase_client.storage.from_(bucket).download(file_name)
+        ),
+        (
+            asyncio.to_thread(
+                lambda: (
+                    supabase_client.table("transcribed")
+                    .delete()
+                    .eq("id", transcript_id)
+                    .execute()
+                )
+            )
+            if transcript_id
+            else asyncio.sleep(0)
+        ),
     )
-    # proceed with operation (no more redundancy in MongoDB)
-    video_metadata = await fetch_file(video_public_id, resource_type="video")
-    if not video_metadata:
-        raise HTTPException(status_code=400, detail="Video file URL not found")
 
-    video_url = video_metadata.get("secure_url") or video_metadata.get("url")
-    if not video_url:
-        raise HTTPException(status_code=400, detail="Video URL not found")
+    if not download_result:
+        raise HTTPException(status_code=400, detail="Downloaded video is empty")
 
-    transcript_result = await asyncio.get_running_loop().run_in_executor(
-        _executor, lambda: transcription_model.transcribe(video_url)
+    transcript_result = await asyncio.to_thread(
+        lambda: _transcribe_video_bytes(download_result, video_path)
     )
 
-    extra_analysis_text = await asyncio.get_running_loop().run_in_executor(
-        _executor,
-        lambda: transcript_gemini_model.generate_content(
-            f"{extra_transcript_prompt}{transcript_result['text']}"
-        ).text.strip(),
+    extra_analysis_data: TranscriptFormat = TranscriptFormat.model_validate(
+        extract_json_payload(
+            await asyncio.to_thread(
+                lambda: transcript_gemini_model.generate_content(
+                    f"{extra_transcript_prompt}{transcript_result['text']}"
+                ).text.strip(),
+            )
+        )
     )
-    extra_analysis_data = extract_json_payload(extra_analysis_text)
 
-    payload = {"transcription": transcript_result["text"]}
-    payload.update(extra_analysis_data)
+    payload: dict[Any, Any] = {"transcription": transcript_result["text"]}
+    payload.update(extra_analysis_data.model_dump())
 
-    inserted_id = await mongodb.insert_document(
-        "transcribed",
-        {"applicant_id": applicant_id, "transcription": payload},
+    inserted_row = await asyncio.to_thread(
+        lambda: (
+            supabase_client.table("transcribed")
+            .insert({"transcription": payload})
+            .execute()
+            .data
+        ),
     )
-    if not inserted_id:
-        raise HTTPException(status_code=500, detail="Failed to insert transcription")
 
-    await asyncio.get_running_loop().run_in_executor(
-        _executor,
+    if not inserted_row:
+        raise HTTPException(
+            status_code=500, detail="Failed to insert transcription data"
+        )
+
+    inserted_row = inserted_row[0]
+    if inserted_row is None or not isinstance(inserted_row, dict):
+        raise HTTPException(status_code=500, detail="Inserted row is invalid or None")
+
+    inserted_row["transcription"] = json.dumps(inserted_row.get("transcription", {}))
+
+    inserted: PublicTranscribed = PublicTranscribed.model_validate(inserted_row)
+
+    await asyncio.to_thread(
         lambda: (
             supabase_client.table("applicants")
-            .update({"transcribed_id": str(inserted_id)})
+            .update({"transcribed_id": str(inserted.id)})
             .eq("id", applicant_id)
             .execute()
         ),
     )
 
-    return {"_id": inserted_id, "applicant_id": applicant_id, "transcription": payload}
+    return InsertResult(
+        inserted_id=str(inserted.id),
+        applicant_id=applicant_id,
+        raw_output=payload,
+    )
 
 
 @router.post("/")
 async def score_candidate(
-    job_id: str = Query(..., description="Job ID"),
     applicant_id: str = Query(..., description="Applicant ID"),
-    # This can be obtained from the database through applicant_id but instead moved the responsibility to NextJS to reduce latency of fetching from database
-    resume_public_id: str = Query(
-        ..., description="Cloudinary public_id of resume PDF."
-    ),
-    # This can be obtained from the database through applicant_id but instead moved the responsibility to NextJS to reduce latency of fetching from database
-    transcript_public_id: str = Query(
-        ..., description="Cloudinary public_id of transcript video"
-    ),
 ) -> ScoreCandidateResponse:
 
-    # delete if already exists
-    await mongodb.delete_document(
-        "scored_candidates",
-        {"applicant_id": applicant_id},
-    )
-    # proceed with operation (no more redundancy in MongoDB)
-    supabase_client = get_supabase_admin_client()
-    try:
-        job_listing_data = await asyncio.get_running_loop().run_in_executor(
-            _executor,
+    supabase_client: Client = get_supabase_admin_client()
+
+    applicant_data: PublicApplicants = PublicApplicants.model_validate(
+        await asyncio.to_thread(
             lambda: (
-                supabase_client.table("job_listings")
-                .select("title")
-                .eq("id", job_id)
+                supabase_client.table("applicants")
+                .select("*")
+                .eq("id", applicant_id)
                 .single()
                 .execute()
+                .data
+            ),
+        )
+    )
+
+    if applicant_data.score_id:
+        await asyncio.to_thread(
+            lambda: (
+                supabase_client.table("scored_candidates")
+                .delete()
+                .eq("id", applicant_data.score_id)
+                .execute()
+            )
+        )
+
+    try:
+        parsed_resume, transcribed, job_listing_data = await asyncio.gather(
+            ensure_parsed_resume(
+                applicant_id,
+                applicant_data.resume_id,
+                supabase_client,
+                applicant_data.parsed_resume_id,
+            ),
+            ensure_transcription(
+                applicant_id,
+                applicant_data.transcript_id,
+                supabase_client,
+                applicant_data.transcribed_id,
+            ),
+            asyncio.to_thread(
+                lambda: (
+                    supabase_client.table("job_listings")
+                    .select("*, jl_requirements(*), job_tags(*, tags(*))")
+                    .eq("id", applicant_data.joblisting_id)
+                    .single()
+                    .execute()
+                    .data
+                ),
             ),
         )
 
-        if not getattr(job_listing_data, "data", None):
-            raise HTTPException(status_code=404, detail="Job listing not found")
-
-        parsed_resume, transcribed = await asyncio.gather(
-            ensure_parsed_resume(applicant_id, resume_public_id, supabase_client),
-            ensure_transcription(applicant_id, transcript_public_id, supabase_client),
-        )
+        job_listing_data = JobListingWithRelations.model_validate(job_listing_data)
 
         if not transcribed:
-            transcribed = {
-                "transcription": {
+            transcribed = InsertResult(
+                inserted_id="",
+                applicant_id=applicant_id,
+                raw_output={
                     "transcription": "No transcription available",
                     "sentimental_analysis": "No sentimental analysis found",
                     "personality_traits": "No personality traits found",
                     "communication_style_insights": "No communication style insights found",
                     "interview_insights": "No interview insights found",
-                }
-            }
+                },
+            )
 
-        tags_response = await asyncio.get_running_loop().run_in_executor(
-            _executor,
-            lambda: (
-                supabase_client.table("job_tags")
-                .select("*, tags(*)")
-                .eq("joblisting_id", job_id)
-                .execute()
-            ),
-        )
-
-        requirements_response = await asyncio.get_running_loop().run_in_executor(
-            _executor,
-            lambda: (
-                supabase_client.table("jl_requirements")
-                .select("requirement")
-                .eq("joblisting_id", job_id)
-                .execute()
-            ),
-        )
-
-        tags_data = tags_response.data or []
-        req_data = requirements_response.data or []
-
-        skills_response = await asyncio.get_running_loop().run_in_executor(
-            _executor,
-            lambda: (
-                supabase_client.table("applicant_skills")
-                .select("tag_id, rating")
-                .eq("applicant_id", applicant_id)
-                .execute()
-            ),
-        )
-
-        skills_data = skills_response.data or []
-        skills_lookup = {s["tag_id"]: s["rating"] for s in skills_data}
-
-        skills_dict = {}
-
-        for t in tags_data:
-            tag_id = t["tag_id"]
-            tag_name = t["tags"]["name"]
-
-            skills_dict[tag_name] = skills_lookup.get(tag_id, 0)
-
-        tag_rating_string = "\n".join(
-            f"{t['tags']['name']} : {skills_lookup[t['tag_id']]}"
-            for t in tags_data
-            if t["tag_id"] in skills_lookup
-        )
-
-        tag_list = [
-            t["tags"]["name"]
-            for t in tags_data
-            if t.get("tags") and t["tags"].get("name")
+        applicant_skills: list[PublicApplicantSkills] = [
+            PublicApplicantSkills.model_validate(applicant_skill)
+            for applicant_skill in await asyncio.to_thread(
+                lambda: (
+                    supabase_client.table("applicant_skills")
+                    .select("*")
+                    .eq("applicant_id", applicant_id)
+                    .execute()
+                    .data
+                ),
+            )
         ]
-        tags_text = "Tags: " + ", ".join(tag_list)
 
-        requirements_list = [r["requirement"] for r in req_data if r.get("requirement")]
-        requirements_text = "Requirements: " + "; ".join(requirements_list)
+        skills_lookup: dict[int, int] = {s.tag_id: s.rating for s in applicant_skills}
 
-        tags = [str(name) for name in tag_list]
+        tag_list: list[str] = [t.tags.name for t in job_listing_data.job_tags]
 
-        resume_json = parsed_resume["raw_output"]
-        transcription = transcribed["transcription"]
-        transcription_text = " ".join(str(v) for v in transcription.values())
+        resume_json = parsed_resume.raw_output
         job_fit_data: JobFitData = get_job_fit_data(resume_json)
         predictive_success_data: PredictiveSuccessData = get_predictive_success_data(
-            resume_json, transcription_text
+            resume_json,
+            transcribed.raw_output["transcription"],
         )
 
         # converts hard skills, work experiences, projects to numerical vector
-        job_fit_text = (
-            f"TECHNICAL SKILLS:\n{job_fit_data.hard_skills}\n\n"
-            f"PROFESSIONAL EXPERIENCE:\n{job_fit_data.work_experiences}\n\n"
-            f"TECHNICAL PROJECTS:\n{job_fit_data.projects}"
-        )
         job_fit_embedding = embedding_model.encode(
-            job_fit_text, normalize_embeddings=True
+            (
+                f"TECHNICAL SKILLS:\n{job_fit_data.hard_skills}\n\n"
+                f"PROFESSIONAL EXPERIENCE:\n{job_fit_data.work_experiences}\n\n"
+                f"TECHNICAL PROJECTS:\n{job_fit_data.projects}"
+            ),
+            normalize_embeddings=True,
         )
 
         # converts soft skills to numerical vector
-        soft_skills_text = f"SOFT SKILLS:\n{predictive_success_data.soft_skills}\n\n"
-        soft_skills_embedding = embedding_model.encode(
-            soft_skills_text, normalize_embeddings=True
+        soft_skills_embedding: np.ndarray = embedding_model.encode(
+            f"SOFT SKILLS:\n{predictive_success_data.soft_skills}\n\n",
+            normalize_embeddings=True,
+            convert_to_numpy=True,
         )
         # converts transcription to numerical vector
-        transcription_text = (
-            f"TRANSCRIPTION:\n{predictive_success_data.transcription}\n\n"
-        )
-        transcription_emb = embedding_model.encode(
-            transcription_text, normalize_embeddings=True
+        transcription_emb: np.ndarray = embedding_model.encode(
+            (f"TRANSCRIPTION:\n{predictive_success_data.transcription}\n\n"),
+            normalize_embeddings=True,
+            convert_to_numpy=True,
         )
         # converts job requirements text and tags to numerical vector
-        job_emb = embedding_model.encode(
-            requirements_text + "\n" + tags_text, normalize_embeddings=True
+        job_emb: np.ndarray = embedding_model.encode(
+            "Requirements: "
+            + "; ".join(r.requirement for r in job_listing_data.jl_requirements)
+            + "\n"
+            + "Tags: "
+            + ", ".join(tag_list),
+            normalize_embeddings=True,
+            convert_to_numpy=True,
         )
         # converts the company's core values to numerical vector
-        cultural_fit_emb = embedding_model.encode(
-            core_values, normalize_embeddings=True
+        cultural_fit_emb: np.ndarray = embedding_model.encode(
+            core_values, normalize_embeddings=True, convert_to_numpy=True
         )
-        soft_skills_baseline_emb = embedding_model.encode(
-            soft_skills_baseline, normalize_embeddings=True
+
+        # converts the soft skills baseline (the ideal standard for soft skills) to numerical vector
+        soft_skills_baseline_emb: np.ndarray = embedding_model.encode(
+            soft_skills_baseline, normalize_embeddings=True, convert_to_numpy=True
         )
         # THE NUMERICAL VECTORS WILL BE USED TO COMPUTE THE SCORES THROUGH COSINE SIMILARITY
-
         # computes the cosine similarity between the job_fit_data (hard skills, work experiences and projects) and the job requirements
-
         # take note that job_fit_score was previously referred to as raw_score
 
-        job_fit_score = float(cosine_similarity([job_fit_embedding], [job_emb])[0][0])
+        job_fit_score = float(
+            cosine_similarity(
+                np.asarray(job_fit_embedding).reshape(1, -1),
+                np.asarray(job_emb).reshape(1, -1),
+            )[0][0]
+        )
 
         # computes the cosine similarity between the soft skills and the soft skills standard
 
         soft_skills_score = float(
-            cosine_similarity([soft_skills_embedding], [soft_skills_baseline_emb])[0][0]
+            cosine_similarity(
+                np.asarray(soft_skills_embedding).reshape(1, -1),
+                np.asarray(soft_skills_baseline_emb).reshape(1, -1),
+            )[0][0]
         )
 
         # computes the cosine similarity between the transcription data and the soft skills standard
 
         transcription_score = float(
-            cosine_similarity([transcription_emb], [soft_skills_baseline_emb])[0][0]
+            cosine_similarity(
+                np.asarray(transcription_emb).reshape(1, -1),
+                np.asarray(soft_skills_baseline_emb).reshape(1, -1),
+            )[0][0]
         )
 
         # computes the cosine similarity between the soft skills and the cultural fit
 
         cultural_fit_score = float(
-            cosine_similarity([soft_skills_embedding], [cultural_fit_emb])[0][0]
+            cosine_similarity(
+                np.asarray(soft_skills_embedding).reshape(1, -1),
+                np.asarray(cultural_fit_emb).reshape(1, -1),
+            )[0][0]
         )
 
         # computes the cosine similarity between the transcription data and the cultural fit
 
         transcription_cultural_fit_score = float(
-            cosine_similarity([transcription_emb], [cultural_fit_emb])[0][0]
+            cosine_similarity(
+                np.asarray(transcription_emb).reshape(1, -1),
+                np.asarray(cultural_fit_emb).reshape(1, -1),
+            )[0][0]
         )
 
         # 1. Calculate the Behavioral Blend (The "How they work" side)
@@ -453,7 +548,7 @@ async def score_candidate(
 
         # This results in a value between 0.0 and 1.0
 
-        predictive_success_raw = (job_fit_score * 0.40) + (behavioral_blend * 0.60)
+        predictive_success_raw: float = (job_fit_score * 0.40) + (behavioral_blend * 0.60)
 
         # 3. Scaling for Human Readability
 
@@ -461,14 +556,14 @@ async def score_candidate(
 
         # A raw score of 0.75 should probably look like a 95% to a recruiter.
 
-        predictive_success_final_score = min(
+        predictive_success_final_score: int = min(
             100, int((predictive_success_raw / BENCHMARK) * 100)
         )
 
         # 4. Job Fit Score (1-5 Star Rating)
 
         # Similarly, we scale 0.85 similarity to be a 5-star result. 0.85 is the perfect score
-        job_fit_final_score = min(100, int((job_fit_score / BENCHMARK) * 100))
+        job_fit_final_score: int = min(100, int((job_fit_score / BENCHMARK) * 100))
         job_fit_stars = float(round(min(5.0, (job_fit_score / BENCHMARK) * 5), 1))
 
         """
@@ -481,58 +576,56 @@ async def score_candidate(
         prompt = (
             localized_scoring_prompt
             + "\n Job: "
-            + str(job_listing_data.data.get("title", "No title found"))
+            + job_listing_data.title
             + "\nResume: "
-            + str(parsed_resume.get("raw_output", "No resume data found"))
+            + json.dumps(parsed_resume.raw_output, ensure_ascii=False)
             + "\nJob Tags: "
-            + ", ".join(tags)
+            + ", ".join(name for name in tag_list)
             + "\nTranscript: "
-            + str(
-                transcribed.get("transcription", {}).get(
-                    "transcription", "No transcription data found"
-                )
-            )
+            + transcribed.raw_output.get("transcription", "No transcription data found")
             + "\n--- Candidate Analysis ---"
             + "\nSentimental Analysis: "
-            + str(
-                transcribed.get("transcription", {}).get(
-                    "sentimental_analysis", "No sentimental analysis found"
-                )
+            + transcribed.raw_output.get(
+                "sentimental_analysis", "No sentimental analysis found"
             )
             + "\nPersonality Traits: "
-            + str(
-                transcribed.get("transcription", {}).get(
-                    "personality_traits", "No personality traits found"
-                )
+            + transcribed.raw_output.get(
+                "personality_traits", "No personality traits found"
             )
             + "\nCommunication Style Insights: "
-            + str(
-                transcribed.get("transcription", {}).get(
-                    "communication_style_insights",
-                    "No communication style insights found",
-                )
+            + transcribed.raw_output.get(
+                "communication_style_insights",
+                "No communication style insights found",
             )
             + "\nInterview Insights: "
-            + str(
-                transcribed.get("transcription", {}).get(
-                    "interview_insights", "No interview insights found"
-                )
+            + transcribed.raw_output.get(
+                "interview_insights", "No interview insights found"
             )
             + "Applicant skillS (self-rating): "
-            + tag_rating_string
+            + "\n".join(
+                f"{job_listing_tag.tags.name} : {skills_lookup[job_listing_tag.tags.id]}"
+                for job_listing_tag in job_listing_data.job_tags
+                if job_listing_tag.tags.id in skills_lookup
+            )
             + "CALCULATED SCORES BY COSINE SIMILARITY: \n"
             + f"JOB_FIT_SCORE = {job_fit_final_score}\n"
             + f"PREDICTIVE_SUCCESS_SCORE = {predictive_success_final_score}"
         )
 
         start_time = time.perf_counter()
-        raw_output = await asyncio.get_running_loop().run_in_executor(
-            _executor,
+        raw_output = await asyncio.to_thread(
             lambda: scoring_gemini_model.generate_content(prompt).text.strip(),
         )
         end_time = time.perf_counter()
         duration = end_time - start_time  # Seconds
-        raw_output = extract_json_payload(raw_output)
+        response_time = round(duration, 2)
+        validated_score: ScoreCandidateFormat = ScoreCandidateFormat.model_validate(
+            extract_json_payload(raw_output)
+        )
+
+        raw_output = (
+            validated_score.model_dump()
+        )  # Convert to dict for storage and response
 
         # use these for success likelihood "visualization"
         raw_output["soft_skills_score"] = soft_skills_score_pct
@@ -541,15 +634,14 @@ async def score_candidate(
         raw_output["cultural_fit_score"] = cultural_fit_score_pct
 
         # response time
-        raw_output["response_time"] = round(duration, 2)
+        raw_output["response_time"] = response_time
 
         # adding the scores to the field
         # final scores
         raw_output["predictive_success"] = predictive_success_final_score
         raw_output["job_fit_score"] = job_fit_final_score
         raw_output["job_fit_stars"] = job_fit_stars
-        # response time
-        response_time = round(duration, 2)
+
         # Ensure BSON-safe payload (ObjectId/numpy scalars/nested structures)
         raw_output = _convert_value(raw_output)
 
@@ -557,49 +649,64 @@ async def score_candidate(
         if not isinstance(raw_output, dict):
             raise HTTPException(status_code=500, detail="Invalid score data format")
 
-        inserted_id = await mongodb.insert_document(
-            "scored_candidates",
-            {
-                "applicant_id": applicant_id,
-                "job_id": job_id,
-                "score_data": raw_output,
-                "created_at": time.time(),
-            },
+        inserted_row = await asyncio.to_thread(
+            lambda: (
+                supabase_client.table("scored_candidates")
+                .insert(
+                    {
+                        "score_data": raw_output,
+                    },
+                )
+                .execute()
+                .data
+            ),
         )
 
-        if not inserted_id:
-            await asyncio.get_running_loop().run_in_executor(
-                _executor,
-                lambda: (
-                    supabase_client.table("applicants")
-                    .delete()
-                    .eq("id", applicant_id)
-                    .execute()
-                ),
+        if not inserted_row:
+            raise HTTPException(
+                status_code=500, detail="Failed to insert scored candidate data"
             )
-            raise HTTPException(status_code=500, detail="Failed to insert score data")
 
-        result = await asyncio.get_running_loop().run_in_executor(
-            _executor,
+        inserted_row = inserted_row[0]
+        if inserted_row is None or not isinstance(inserted_row, dict):
+            raise HTTPException(
+                status_code=500,
+                detail="Inserted scored candidate row is invalid or None",
+            )
+
+        inserted_row["score_data"] = json.dumps(inserted_row.get("score_data", {}))
+
+        inserted_scored_candidates: PublicScoredCandidates = (
+            PublicScoredCandidates.model_validate(inserted_row)
+        )
+
+        result = await asyncio.to_thread(
             lambda: (
                 supabase_client.table("applicants")
-                .update({"score_id": str(inserted_id)})
+                .update({"score_id": str(inserted_scored_candidates.id)})
                 .eq("id", applicant_id)
                 .execute()
             ),
         )
 
         if not result.data:
-            await mongodb.delete_document("scored_candidates", {"_id": inserted_id})
+            await asyncio.to_thread(
+                lambda: (
+                    supabase_client.table("scored_candidates")
+                    .delete()
+                    .eq("id", inserted_scored_candidates.id)
+                    .execute()
+                ),
+            )
             raise HTTPException(
                 status_code=500, detail="Failed to update job applicant"
             )
 
         return ScoreCandidateResponse(
             message="Candidate scored successfully",
-            reason=raw_output["reason"],
-            phrases=raw_output["phrases"],
-            skill_gaps_recommendations=raw_output["skill_gaps_recommendations"],
+            reason=validated_score.reason,
+            phrases=validated_score.phrases,
+            skill_gaps_recommendations=validated_score.skill_gaps_recommendations,
             soft_skills_score=soft_skills_score_pct,
             transcription_score=transcription_score_pct,
             transcription_cultural_fit_score=trans_cultural_fit_score_pct,
@@ -609,6 +716,7 @@ async def score_candidate(
             job_fit_score=job_fit_final_score,
             job_fit_stars=job_fit_stars,
         )
+    except HTTPException as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
     except Exception as e:
-        # surface a clear HTTP error
         raise HTTPException(status_code=500, detail=str(e))

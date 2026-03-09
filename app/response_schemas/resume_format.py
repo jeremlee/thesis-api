@@ -1,5 +1,3 @@
-from pydantic import BaseModel
-
 resume_response_schema = {
     "type": "object",
     "properties": {
@@ -127,10 +125,3 @@ resume_response_schema = {
         "projects",
     ],
 }
-
-class ParseResumeResponse(BaseModel):
-    message: str
-    parsed_resume_id: str
-
-class DeleteParsedResumeResponse(BaseModel):
-    message: str
