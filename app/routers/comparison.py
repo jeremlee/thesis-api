@@ -75,20 +75,20 @@ def format_score_doc(doc: Optional[ScoredCandidateData]) -> str:
 
 
 def format_resume_doc(doc: Optional[ParsedResumeData]) -> str:
+    if doc is None:
+        return "No resume data available."
 
-    # return (
-    #     f"Name: {ro.get('name', '')}\n"
-    #     f"City: {ro.get('city', '')}\n"
-    #     f"Contact: {ro.get('contact_number', '')}\n"
-    #     f"Email: {ro.get('email', '')}\n"
-    #     f"Education: {ro.get('educational_background', [])}\n"
-    #     f"Soft Skills: {ro.get('soft_skills', [])}\n"
-    #     f"Hard Skills: {ro.get('hard_skills', [])}\n"
-    #     f"Work Experience: {ro.get('work_experience', [])}\n"
-    #     f"Projects: {ro.get('projects', [])}"
-    # )
-
-    return ""
+    return (
+        f"Name: {doc.name}\n"
+        f"City: {doc.city}\n"
+        f"Contact: {doc.contact_number}\n"
+        f"Email: {doc.email}\n"
+        f"Education: {doc.educational_background}\n"
+        f"Soft Skills: {doc.soft_skills}\n"
+        f"Hard Skills: {doc.hard_skills}\n"
+        f"Work Experience: {doc.work_experience}\n"
+        f"Projects: {doc.projects}"
+    )
 
 
 @router.get("/")
