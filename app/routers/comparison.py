@@ -45,33 +45,18 @@ def _extract_and_validate(row, label, field_name, model_cls: Type[T]) -> T:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _unwrap_number(val):
-    # handle MongoDB serialized numeric types like {"$numberDouble":"1.54"}
-    if isinstance(val, dict):
-        for k in ("$numberDouble", "$numberInt", "$numberLong"):
-            if k in val:
-                return val[k]
-    return val
-
-
 def format_score_doc(doc: Optional[ScoredCandidateData]) -> str:
-    # raw_score = _unwrap_number(sd.) or sd.raw_score
-    # predictive = _unwrap_number(sd.get("predictive_success")) or sd.get(
-    #     "predictive_success"
-    # )
-    # reason = sd.get("reason", "")
-    # phrases = sd.get("phrases", [])
-    # recs = sd.get("skill_gaps_recommendations", "")
-    # return (
-    #     f"User ID: {doc.get('user_id')}\n"
-    #     f"Job ID: {doc.get('job_id')}\n"
-    #     f"Raw Score: {raw_score}\n"
-    #     f"Predictive Success: {predictive}\n"
-    #     f"Reason: {reason}\n"
-    #     f"Phrases: {', '.join(phrases) if phrases else ''}\n"
-    #     f"Recommendations: {recs}"
-    # )
-    return ""
+    if doc is None:
+        return "No scoring data available."
+
+    phrases: list[str] = doc.phrases
+    return (
+        f"Raw Score: {doc.job_fit_score}\n"
+        f"Predictive Success: {doc.predictive_success}\n"
+        f"Reason: {doc.reason}\n"
+        f"Phrases: {', '.join(phrases) if phrases else ''}\n"
+        f"Recommendations: {doc.skill_gaps_recommendations}"
+    )
 
 
 def format_resume_doc(doc: Optional[ParsedResumeData]) -> str:

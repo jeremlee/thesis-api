@@ -45,8 +45,6 @@ from entities.fastapi.schema_public_latest import (
 router = APIRouter(prefix="/score", tags=["Score"])
 
 
-
-
 class JobFitData(BaseModel):
     hard_skills: str
     work_experiences: str
@@ -86,11 +84,11 @@ def _transcribe_video_bytes(video_bytes: bytes, source_name: str) -> dict:
 
 def get_job_fit_data(resume_json: dict) -> JobFitData:
 
-    hard_skills = ""
+    hard_skills: str = ""
     if "hard_skills" in resume_json:
         hard_skills = "Technical Competencies: " + ", ".join(resume_json["hard_skills"])
 
-    work_experiences = ""
+    work_experiences: str = ""
     if "work_experience" in resume_json:
         exp_parts = [
             f"Role: {e.get('title')} at {e.get('company')}. Responsibilities and Tech: {e.get('description', '')}"
@@ -98,7 +96,7 @@ def get_job_fit_data(resume_json: dict) -> JobFitData:
         ]
         work_experiences = "\n".join(exp_parts)
 
-    projects = ""
+    projects: str = ""
     if "projects" in resume_json:
         proj_parts = [
             f"Project: {p.get('name')}. Details: {p.get('description', '')}"
@@ -114,7 +112,7 @@ def get_job_fit_data(resume_json: dict) -> JobFitData:
 def get_predictive_success_data(
     resume_json: dict, transcription_data: str
 ) -> PredictiveSuccessData:
-    soft_skills = ""
+    soft_skills: str = ""
     if "soft_skills" in resume_json:
         soft_skills = "Behavioral Competencies: " + ", ".join(
             resume_json["soft_skills"]
@@ -349,11 +347,15 @@ async def score_candidate(
     soft_skills_weight: float = Query(..., description="Soft skills score weight"),
     transcription_weight: float = Query(..., description="Transcription score weight"),
     cultural_fit_weight: float = Query(..., description="Cultural fit score weight"),
-    transcription_cultural_weight: float = Query(..., description="Transcription cultural fit score weight"),
+    transcription_cultural_weight: float = Query(
+        ..., description="Transcription cultural fit score weight"
+    ),
     job_fit_weight: float = Query(..., description="Job fit score weight"),
-    behavioral_blend_weight: float = Query(..., description="Behavioral blend score weight"),
+    behavioral_blend_weight: float = Query(
+        ..., description="Behavioral blend score weight"
+    ),
 ) -> ScoreCandidateResponse:
-    
+
     # validating
     if benchmark <= 0.0 or benchmark >= 1.0:
         raise HTTPException(
@@ -361,13 +363,16 @@ async def score_candidate(
             detail="Benchmark must be greater than 0.0 and less than 1.0 (0.65-0.85 is recommended)",
         )
     # checking if everything adds up to 1.0
-    if not abs(
-        soft_skills_weight
-        + transcription_weight
-        + cultural_fit_weight
-        + transcription_cultural_weight
-        - 1.0
-    ) < 1e-6:
+    if (
+        not abs(
+            soft_skills_weight
+            + transcription_weight
+            + cultural_fit_weight
+            + transcription_cultural_weight
+            - 1.0
+        )
+        < 1e-6
+    ):
         raise HTTPException(
             status_code=400,
             detail="Behavioral weights must sum to 1.0",
@@ -579,7 +584,9 @@ async def score_candidate(
 
         # This results in a value between 0.0 and 1.0
 
-        predictive_success_raw: float = (job_fit_score * job_fit_weight) + (behavioral_blend * behavioral_blend_weight)
+        predictive_success_raw: float = (job_fit_score * job_fit_weight) + (
+            behavioral_blend * behavioral_blend_weight
+        )
 
         # 3. Scaling for Human Readability
 
