@@ -44,7 +44,7 @@ from entities.fastapi.schema_public_latest import (
 
 router = APIRouter(prefix="/score", tags=["Score"])
 
-BENCHMARK = 0.80
+
 
 
 class JobFitData(BaseModel):
@@ -345,7 +345,39 @@ async def ensure_transcription(
 @router.post("/")
 async def score_candidate(
     applicant_id: str = Query(..., description="Applicant ID"),
+    benchmark: float = Query(..., description="Benchmark value (harshness of scoring)"),
+    soft_skills_weight: float = Query(..., description="Soft skills score weight"),
+    transcription_weight: float = Query(..., description="Transcription score weight"),
+    cultural_fit_weight: float = Query(..., description="Cultural fit score weight"),
+    transcription_cultural_weight: float = Query(..., description="Transcription cultural fit score weight"),
+    job_fit_weight: float = Query(..., description="Job fit score weight"),
+    behavioral_blend_weight: float = Query(..., description="Behavioral blend score weight"),
 ) -> ScoreCandidateResponse:
+    
+    # validating
+    if benchmark <= 0.0 or benchmark >= 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="Benchmark must be greater than 0.0 and less than 1.0 (0.65-0.85 is recommended)",
+        )
+    # checking if everything adds up to 1.0
+    if not abs(
+        soft_skills_weight
+        + transcription_weight
+        + cultural_fit_weight
+        + transcription_cultural_weight
+        - 1.0
+    ) < 1e-6:
+        raise HTTPException(
+            status_code=400,
+            detail="Behavioral weights must sum to 1.0",
+        )
+
+    if not abs(job_fit_weight + behavioral_blend_weight - 1.0) < 1e-6:
+        raise HTTPException(
+            status_code=400,
+            detail="Final weights must sum to 1.0",
+        )
 
     supabase_client: Client = get_supabase_admin_client()
 
@@ -527,44 +559,41 @@ async def score_candidate(
 
         # 1. Calculate the Behavioral Blend (The "How they work" side)
 
-        # We prioritize the transcription (interview) over the resume list
         behavioral_blend = (
-            (transcription_cultural_fit_score * 0.30)
-            + (transcription_score * 0.25)
-            + (cultural_fit_score * 0.15)
-            + (soft_skills_score * 0.30)
+            (transcription_cultural_fit_score * transcription_cultural_weight)
+            + (transcription_score * transcription_weight)
+            + (cultural_fit_score * cultural_fit_weight)
+            + (soft_skills_score * soft_skills_weight)
         )
 
         # normalizing values
 
-        soft_skills_score_pct = min(100, int((soft_skills_score / BENCHMARK) * 100))
-        transcription_score_pct = min(100, int((transcription_score / BENCHMARK) * 100))
-        cultural_fit_score_pct = min(100, int((cultural_fit_score / BENCHMARK) * 100))
+        soft_skills_score_pct = min(100, int((soft_skills_score / benchmark) * 100))
+        transcription_score_pct = min(100, int((transcription_score / benchmark) * 100))
+        cultural_fit_score_pct = min(100, int((cultural_fit_score / benchmark) * 100))
         trans_cultural_fit_score_pct = min(
-            100, int((transcription_cultural_fit_score / BENCHMARK) * 100)
+            100, int((transcription_cultural_fit_score / benchmark) * 100)
         )
 
-        # 2. Calculate Final Predictive Success (50% Job Fit + 50% Behavior)
+        # 2. Calculate Final Predictive Success (with the according weights)
 
         # This results in a value between 0.0 and 1.0
 
-        predictive_success_raw: float = (job_fit_score * 0.40) + (behavioral_blend * 0.60)
+        predictive_success_raw: float = (job_fit_score * job_fit_weight) + (behavioral_blend * behavioral_blend_weight)
 
         # 3. Scaling for Human Readability
 
         # Since MPNet scores rarely hit 1.0, we scale the result.
 
-        # A raw score of 0.75 should probably look like a 95% to a recruiter.
-
         predictive_success_final_score: int = min(
-            100, int((predictive_success_raw / BENCHMARK) * 100)
+            100, int((predictive_success_raw / benchmark) * 100)
         )
 
         # 4. Job Fit Score (1-5 Star Rating)
 
-        # Similarly, we scale 0.85 similarity to be a 5-star result. 0.85 is the perfect score
-        job_fit_final_score: int = min(100, int((job_fit_score / BENCHMARK) * 100))
-        job_fit_stars = float(round(min(5.0, (job_fit_score / BENCHMARK) * 5), 1))
+        # Similarly, we scale 0.85 similarity to be a 5-star result. 0.85 is the perfect score (replaced with benchmark input)
+        job_fit_final_score: int = min(100, int((job_fit_score / benchmark) * 100))
+        job_fit_stars = float(round(min(5.0, (job_fit_score / benchmark) * 5), 1))
 
         """
         scores are based from:
