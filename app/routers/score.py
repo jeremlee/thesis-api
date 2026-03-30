@@ -671,6 +671,14 @@ async def score_candidate(
         raw_output["job_fit_score"] = job_fit_final_score
         raw_output["job_fit_stars"] = job_fit_stars
 
+        # dynamic weights added to the json raw_output
+        raw_output["soft_skills_weight"] = soft_skills_weight
+        raw_output["benchmark"] = benchmark
+        raw_output["transcription_weight"] = transcription_weight
+        raw_output["cultural_fit_weight"] = cultural_fit_weight
+        raw_output["transcription_cultural_weight"] = transcription_cultural_weight
+        raw_output["job_fit_weight"] = job_fit_weight
+        raw_output["behavioral_blend_weight"] = behavioral_blend_weight
         # Ensure BSON-safe payload (ObjectId/numpy scalars/nested structures)
         raw_output = _convert_value(raw_output)
 
