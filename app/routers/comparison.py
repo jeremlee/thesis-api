@@ -80,9 +80,6 @@ def format_resume_doc(doc: Optional[ParsedResumeData]) -> str:
 
     return (
         f"Name: {doc.name}\n"
-        f"City: {doc.city}\n"
-        f"Contact: {doc.contact_number}\n"
-        f"Email: {doc.email}\n"
         f"Education: {doc.educational_background}\n"
         f"Soft Skills: {doc.soft_skills}\n"
         f"Hard Skills: {doc.hard_skills}\n"
