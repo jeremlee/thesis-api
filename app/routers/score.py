@@ -40,6 +40,7 @@ from entities.fastapi.schema_public_latest import (
     PublicParsedResume,
     PublicScoredCandidates,
     PublicTranscribed,
+    PublicScoringSettings,
 )
 
 router = APIRouter(prefix="/score", tags=["Score"])
@@ -342,21 +343,64 @@ async def ensure_transcription(
 
 @router.post("/")
 async def score_candidate(
-    applicant_id: str = Query(..., description="Applicant ID"),
-    benchmark: float = Query(..., description="Benchmark value (harshness of scoring)"),
-    soft_skills_weight: float = Query(..., description="Soft skills score weight"),
-    transcription_weight: float = Query(..., description="Transcription score weight"),
-    cultural_fit_weight: float = Query(..., description="Cultural fit score weight"),
-    transcription_cultural_weight: float = Query(
-        ..., description="Transcription cultural fit score weight"
-    ),
-    job_fit_weight: float = Query(..., description="Job fit score weight"),
-    behavioral_blend_weight: float = Query(
-        ..., description="Behavioral blend score weight"
-    ),
+    applicant_id: str = Query(..., description="Applicant ID")
 ) -> ScoreCandidateResponse:
 
-    # validating
+    supabase_client: Client = get_supabase_admin_client()
+
+    applicant_data: PublicApplicants = PublicApplicants.model_validate(
+        await asyncio.to_thread(
+            lambda: (
+                supabase_client.table("applicants")
+                .select("*")
+                .eq("id", applicant_id)
+                .single()
+                .execute()
+                .data
+            ),
+        )
+    )
+
+    if applicant_data.score_id:
+        await asyncio.to_thread(
+            lambda: (
+                supabase_client.table("scored_candidates")
+                .delete()
+                .eq("id", applicant_data.score_id)
+                .execute()
+            )
+        )
+
+    # retrieve job scoring settings from supabase
+    scoring_settings_row = await asyncio.to_thread(
+        lambda: (
+            supabase_client.table("scoring_settings")
+            .select("*")
+            .eq("joblisting_id", applicant_data.joblisting_id)
+            .single()
+            .execute()
+            .data
+        )
+    )
+
+    if not scoring_settings_row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No scoring settings found for joblisting_id {applicant_data.joblisting_id}"
+        )
+    
+
+    weights: PublicScoringSettings = PublicScoringSettings.model_validate(scoring_settings_row)
+
+    benchmark:float = weights.ai_benchmark
+    soft_skills_weight:float = weights.soft_skills_score
+    transcription_weight:float = weights.transcription_score
+    cultural_fit_weight:float = weights.cultural_fit_score
+    transcription_cultural_weight:float = weights.transcription_cultural_fit_score
+    job_fit_weight:float = weights.job_fit_score
+    behavioral_blend_weight:float = weights.behavioral_blend
+
+     # validating
     if benchmark <= 0.0 or benchmark >= 1.0:
         raise HTTPException(
             status_code=400,
@@ -382,31 +426,6 @@ async def score_candidate(
         raise HTTPException(
             status_code=400,
             detail="Final weights must sum to 1.0",
-        )
-
-    supabase_client: Client = get_supabase_admin_client()
-
-    applicant_data: PublicApplicants = PublicApplicants.model_validate(
-        await asyncio.to_thread(
-            lambda: (
-                supabase_client.table("applicants")
-                .select("*")
-                .eq("id", applicant_id)
-                .single()
-                .execute()
-                .data
-            ),
-        )
-    )
-
-    if applicant_data.score_id:
-        await asyncio.to_thread(
-            lambda: (
-                supabase_client.table("scored_candidates")
-                .delete()
-                .eq("id", applicant_data.score_id)
-                .execute()
-            )
         )
 
     try:
@@ -679,6 +698,7 @@ async def score_candidate(
         raw_output["job_fit_stars"] = job_fit_stars
 
         # dynamic weights added to the json raw_output
+        # may be removed because it will already be in the supabase but for now i will keep it
         raw_output["soft_skills_weight"] = soft_skills_weight
         raw_output["benchmark"] = benchmark
         raw_output["transcription_weight"] = transcription_weight
