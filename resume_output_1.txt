@@ -1,0 +1,355 @@
+Start Time: 2026-04-21 20:16:23
+End Time: 2026-04-21 20:19:35
+Elapsed Time: 192.59 seconds
+
+=== Extracted Resume Text ===
+A passionate and dedicated computer scientist and web developer, eager to learn and adapt to new technologies. He
+thrives on solving complex problems, building intuitive web applications, and optimizing digital solutions for efficiency.
+With a strong foundation in programming, automation, and web development, he actively seeks opportunities to grow
+and contribute to innovative projects. Beyond coding, he values leadership and collaboration, engaging in organizations
+that foster personal and professional development, allowing him to evolve into a well-rounded tech professional.ABOUT ME
+EDUCATION
+Bachelor of Science in Computer Science 2022 - 2026
+Cebu Institute of Technology - University
+EXPERIENCE AND PROJECTS
+Interpreter Developer
+Back-end Developer - IntelliForums - Advanced Forums SystemDesigned and developed Bisaya++, a strongly-typed, high-level interpreted
+programming language based on Cebuano, aimed at teaching native Cebuanos the
+fundamentals of programming.
+Implemented the interpreter using C++, leveraging object-oriented programming
+principles to ensure robust performance and scalability.
+Created a simple, user-friendly syntax with native Cebuano keywords to lower the
+learning curve for beginners and promote accessibility in programming education.
+Developed a full-stack online forum system using Python - Django Framework
+Implemented authentication, real-time database updates, and a seamless forums user
+interface
+Designed and optimized database schema for efficient artwork listings and
+transactions.2024 - 2025
+2024Bisaya++
+IntelliForums
+SKILLS
+Continuous Learning
+Back-end DevelopmentMachine/Deep Learning
+Performance Optimization+639270183421 jameskennethacabal@gmail.com PORTFOLIOJAMES KENNETH
+S. ACABAL
+TECH STACKBack-end Developer - ANI - Agricultural Networks and Innovation
+Collaborated on the development of a web application aimed at enhancing agricultural
+networking and innovation.
+Utilized C# ASP .NET CORE WEB API for backend development and HTML, CSS-
+Tailwind, and JavaScript for the frontend, ensuring a responsive and user-friendly
+interface.
+Implemented the frontend part of the project using CSS - Tailwind Framework and
+JQuery.2024
+ANI
+CERTIFICATIONS
+Codechum C Certificate
+Codechum Java Certificate
+
+=== Generated Output ===
+
+Parse this resume into structured JSON:
+name, education, skills, experience
+
+
+A passionate and dedicated computer scientist and web developer, eager to learn and adapt to new technologies. He
+thrives on solving complex problems, building intuitive web applications, and optimizing digital solutions for efficiency.
+With a strong foundation in programming, automation, and web development, he actively seeks opportunities to grow
+and contribute to innovative projects. Beyond coding, he values leadership and collaboration, engaging in organizations
+that foster personal and professional development, allowing him to evolve into a well-rounded tech professional.ABOUT ME
+EDUCATION
+Bachelor of Science in Computer Science 2022 - 2026
+Cebu Institute of Technology - University
+EXPERIENCE AND PROJECTS
+Interpreter Developer
+Back-end Developer - IntelliForums - Advanced Forums SystemDesigned and developed Bisaya++, a strongly-typed, high-level interpreted
+programming language based on Cebuano, aimed at teaching native Cebuanos the
+fundamentals of programming.
+Implemented the interpreter using C++, leveraging object-oriented programming
+principles to ensure robust performance and scalability.
+Created a simple, user-friendly syntax with native Cebuano keywords to lower the
+learning curve for beginners and promote accessibility in programming education.
+Developed a full-stack online forum system using Python - Django Framework
+Implemented authentication, real-time database updates, and a seamless forums user
+interface
+Designed and optimized database schema for efficient artwork listings and
+transactions.2024 - 2025
+2024Bisaya++
+IntelliForums
+SKILLS
+Continuous Learning
+Back-end DevelopmentMachine/Deep Learning
+Performance Optimization+639270183421 jameskennethacabal@gmail.com PORTFOLIOJAMES KENNETH
+S. ACABAL
+TECH STACKBack-end Developer - ANI - Agricultural Networks and Innovation
+Collaborated on the development of a web application aimed at enhancing agricultural
+networking and innovation.
+Utilized C# ASP .NET CORE WEB API for backend development and HTML, CSS-
+Tailwind, and JavaScript for the frontend, ensuring a responsive and user-friendly
+interface.
+Implemented the frontend part of the project using CSS - Tailwind Framework and
+JQuery.2024
+ANI
+CERTIFICATIONS
+Codechum C Certificate
+Codechum Java Certificate
+PORTFOLIO
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
+Agri-Network
+Agri-Network
+Portfolio
+2024 - 2025
